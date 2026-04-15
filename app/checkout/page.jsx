@@ -1,88 +1,129 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import QRCode from "qrcode";
 
 export default function Checkout() {
 
   const [cart, setCart] = useState([]);
-  const [pix, setPix] = useState("");
+  const [qr, setQr] = useState("");
+  const [pixCode, setPixCode] = useState("");
 
-  const [frete, setFrete] = useState(10); // padrão
-
+  const frete = 10; // 🔥 depois você pode mudar no admin
   const chavePix = "58e6d787-d9ac-4e02-b7d3-2bb11aabb542";
+  const whatsapp = "5512981654900";
 
   useEffect(() => {
-    const c = JSON.parse(localStorage.getItem("cart")) || [];
-    setCart(c);
-
-    const f = Number(localStorage.getItem("frete")) || 10;
-    setFrete(f);
+    const data = JSON.parse(localStorage.getItem("cart")) || [];
+    setCart(data);
   }, []);
 
-  const total = cart.reduce((a,b)=>a+b.preco*b.qty,0) + frete;
+  const subtotal = cart.reduce((a, b) => a + b.preco * b.qty, 0);
+  const total = subtotal + frete;
 
-  async function gerarPix(){
+  async function gerarPix() {
 
-    const texto = `
-Pedido
--------
-${cart.map(i=>`${i.nome} x${i.qty}`).join("\n")}
--------
-Total: R$ ${total}
+    const itens = cart.map(i =>
+      `${i.nome} x${i.qty} - R$ ${i.preco * i.qty}`
+    ).join("\n");
+
+    const payload = `
+PEDIDO LOJA
+------------
+${itens}
+------------
+FRETE: R$ ${frete}
+TOTAL: R$ ${total}
 PIX: ${chavePix}
 `;
 
-    const img = await QRCode.toDataURL(texto);
-    setPix(img);
+    const qrImg = await QRCode.toDataURL(payload);
+
+    setQr(qrImg);
+    setPixCode(payload);
   }
 
-  function enviarWhats(){
-    window.open(
-      "https://wa.me/5512981654900?text=Novo pedido realizado, enviar comprovante PIX",
-      "_blank"
-    );
+  function enviarWhats() {
+
+    const itens = cart.map(i =>
+      `${i.nome} x${i.qty}`
+    ).join("%0A");
+
+    const msg = `NOVO PEDIDO:%0A${itens}%0A%0ATOTAL: R$ ${total}%0AEnviar comprovante PIX`;
+
+    window.open(`https://wa.me/${whatsapp}?text=${msg}`, "_blank");
   }
 
   return (
-    <div style={{ display:"flex", gap:20, padding:20 }}>
+    <div style={page}>
 
-      {/* ITENS */}
-      <div style={{ flex:1 }}>
-        <h2>Resumo</h2>
+      <h2>Finalizar Pedido</h2>
 
-        {cart.map(i=>(
+      <div style={box}>
+        {cart.map(i => (
           <p key={i.id}>
-            {i.nome} x{i.qty} - R$ {i.preco*i.qty}
+            {i.nome} x{i.qty} - R$ {i.preco * i.qty}
           </p>
         ))}
-
       </div>
 
-      {/* RESUMO FIXO */}
-      <div style={{
-        width:300,
-        border:"1px solid #ddd",
-        padding:10
-      }}>
+      <h3>Frete: R$ {frete}</h3>
+      <h2>Total: R$ {total}</h2>
 
-        <h3>Resumo final</h3>
+      <button style={btn} onClick={gerarPix}>
+        Gerar PIX
+      </button>
 
-        <p>Frete: R$ {frete}</p>
-        <p><b>Total: R$ {total}</b></p>
+      {qr && (
+        <>
+          <img src={qr} width={200} />
 
-        <button onClick={gerarPix} style={{ width:"100%", padding:10 }}>
-          Gerar PIX
-        </button>
+          <textarea
+            value={pixCode}
+            readOnly
+            style={textarea}
+          />
 
-        {pix && <img src={pix} width="100%" />}
+          <p>Envie o comprovante no WhatsApp</p>
 
-        <button onClick={enviarWhats} style={{ marginTop:10, background:"green", color:"#fff", width:"100%" }}>
-          Enviar WhatsApp
-        </button>
-
-      </div>
+          <button style={btnGreen} onClick={enviarWhats}>
+            Enviar pedido
+          </button>
+        </>
+      )}
 
     </div>
   );
 }
+
+/* ===== STYLE SIMPLES ===== */
+
+const page = { padding: 20, fontFamily: "Arial" };
+
+const box = {
+  border: "1px solid #ddd",
+  padding: 10,
+  marginBottom: 10
+};
+
+const btn = {
+  padding: 10,
+  background: "#ff5722",
+  color: "#fff",
+  border: "none",
+  marginTop: 10
+};
+
+const btnGreen = {
+  padding: 10,
+  background: "green",
+  color: "#fff",
+  border: "none",
+  marginTop: 10
+};
+
+const textarea = {
+  width: "100%",
+  height: 80,
+  marginTop: 10
+};

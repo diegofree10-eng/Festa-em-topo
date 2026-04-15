@@ -1,221 +1,255 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { useRouter } from "next/navigation";
+import { useCart } from "@/app/context/CartContext";
 
 export default function Home() {
+  const [produtos, setProdutos] = useState([]);
+  const [search, setSearch] = useState("");
+  const router = useRouter();
+  const { cart } = useCart();
 
-  const [cart, setCart] = useState([]);
-  const [openCart, setOpenCart] = useState(false);
-
-  const produtos = [
-    {
-      id: 1,
-      nome: "Kit Festa Premium",
-      preco: 50,
-      img: "https://images.unsplash.com/photo-1607082349566-187342175e2f?w=500"
-    },
-    {
-      id: 2,
-      nome: "Adesivo",
-      preco: 10,
-      img: "https://images.unsplash.com/photo-1581091870627-3f7c6f06f5f6?w=500"
-    },
-    {
-      id: 3,
-      nome: "Combo Festa",
-      preco: 120,
-      img: "https://images.unsplash.com/photo-1600891964599-f61ba0e24092?w=500"
-    }
+  // 🔥 BANNER DINÂMICO
+  const mensagens = [
+    "Produtos personalizados e entrega rápida",
+    "🔥 Descontos especiais toda semana",
+    "📦 Enviamos para todo o Brasil",
+    "💚 Qualidade e preço justo"
   ];
 
-  function add(p) {
-    const exists = cart.find(i => i.id === p.id);
+  const [msgIndex, setMsgIndex] = useState(0);
+  const [fade, setFade] = useState(true);
 
-    if (exists) {
-      setCart(cart.map(i =>
-        i.id === p.id ? { ...i, qty: i.qty + 1 } : i
-      ));
-    } else {
-      setCart([...cart, { ...p, qty: 1 }]);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFade(false);
+
+      setTimeout(() => {
+        setMsgIndex((prev) => (prev + 1) % mensagens.length);
+        setFade(true);
+      }, 200);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    async function load() {
+      const q = query(collection(db, "produtos"), orderBy("createdAt", "desc"));
+      const snap = await getDocs(q);
+
+      setProdutos(
+        snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data()
+        }))
+      );
     }
-  }
 
-  function dec(id) {
-    setCart(cart.map(i =>
-      i.id === id && i.qty > 1 ? { ...i, qty: i.qty - 1 } : i
-    ));
-  }
+    load();
+  }, []);
 
-  function remove(id) {
-    setCart(cart.filter(i => i.id !== id));
-  }
+  const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  const total = cart.reduce((a, b) => a + b.preco * b.qty, 0);
+  const filtered = produtos.filter((p) =>
+    p.nome.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <div style={page}>
+    <div style={styles.page}>
 
-      {/* HEADER */}
-      <div style={header}>
-        <h4>Loja</h4>
+      {/* 🔥 HEADER */}
+      <header style={styles.header}>
 
-        <button onClick={() => setOpenCart(true)} style={cartBtn}>
-          🛒 {cart.length}
+        <div style={styles.logoArea}>
+          <div style={styles.logoBox}>
+            <img src="/logo.png" style={styles.logo} />
+          </div>
+        </div>
+
+        <div style={styles.searchBox}>
+          <input
+            placeholder="Buscar produtos..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={styles.searchInput}
+          />
+        </div>
+
+        <button
+          style={styles.cartBtn}
+          onClick={() => router.push("/carrinho")}
+        >
+          🛒 Comprar ({cartCount})
         </button>
+
+      </header>
+
+      {/* 🔥 BANNER ESTÁVEL (SEM PULAR) */}
+      <div style={styles.stripBanner}>
+        <div
+          style={{
+            ...styles.bannerText,
+            opacity: fade ? 1 : 0
+          }}
+        >
+          {mensagens[msgIndex]}
+        </div>
       </div>
 
-      {/* GRID SHOPEE REAL (DENSO) */}
-      <div style={grid}>
-        {produtos.map(p => (
-          <div key={p.id} style={card}>
+      {/* 🔥 GRID */}
+      <main style={styles.grid}>
+        {filtered.map((p) => (
+          <div
+            key={p.id}
+            style={styles.card}
+            onClick={() => router.push(`/produto/${p.id}`)}
+          >
 
-            <div style={imgBox}>
-              <img src={p.img} style={img} />
+            <div style={styles.imgBox}>
+              <img src={p.capa} style={styles.img} />
             </div>
 
-            <p style={name}>{p.nome}</p>
-            <p style={price}>R$ {p.preco}</p>
-
-            <button style={btn} onClick={() => add(p)}>
-              +
-            </button>
+            <div style={styles.info}>
+              <h3 style={styles.name}>{p.nome}</h3>
+              <p style={styles.price}>R$ {p.preco}</p>
+            </div>
 
           </div>
         ))}
-      </div>
-
-      {/* CARRINHO */}
-      {openCart && (
-        <div style={overlay}>
-          <div style={side}>
-
-            <div style={sideHeader}>
-              <p>Carrinho</p>
-              <button onClick={() => setOpenCart(false)}>X</button>
-            </div>
-
-            <div style={scroll}>
-              {cart.map(i => (
-                <div key={i.id} style={cartItem}>
-                  <p style={{ fontSize: 11 }}>{i.nome}</p>
-
-                  <div>
-                    <button onClick={() => dec(i.id)}>-</button>
-                    <span>{i.qty}</span>
-                    <button onClick={() => add(i)}>+</button>
-                  </div>
-
-                  <button onClick={() => remove(i.id)}>remover</button>
-                </div>
-              ))}
-            </div>
-
-            <div style={sideFooter}>
-              <b>Total: R$ {total.toFixed(2)}</b>
-            </div>
-
-          </div>
-        </div>
-      )}
+      </main>
 
     </div>
   );
 }
 
-/* ===== SHOPEE REAL (ULTRA COMPACTO) ===== */
+const styles = {
 
-const page = { fontFamily: "Arial", background: "#f5f5f5" };
+  page: {
+    background: "#f5f7fb",
+    minHeight: "100vh"
+  },
 
-const header = {
-  display: "flex",
-  justifyContent: "space-between",
-  padding: 8,
-  background: "#ff5722",
-  color: "#fff"
-};
+  header: {
+    position: "sticky",
+    top: 0,
+    zIndex: 1000,
+    background: "#fff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "10px 12px",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.05)"
+  },
 
-/* 🔥 ISSO AQUI É O QUE CORRIGE TUDO */
-const grid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, 1fr)",
-  gap: 2,
-  padding: 3
-};
+  logoArea: {
+    display: "flex",
+    alignItems: "center"
+  },
 
-const card = {
-  background: "#fff",
-  borderRadius: 4,
-  padding: 3
-};
+  logoBox: {
+    width: 150,
+    height: 150,
+    borderRadius: 20,
+    overflow: "hidden",
+    border: "1px solid #eee",
+    background: "#fff"
+  },
 
-/* 🔥 MUITO PEQUENO MESMO */
-const imgBox = {
-  width: "100%",
-  height: 55,
-  overflow: "hidden",
-  borderRadius: 4
-};
+  logo: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover"
+  },
 
-const img = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover"
-};
+  searchBox: {
+    flex: 1,
+    display: "flex",
+    justifyContent: "center",
+    padding: "0 10px"
+  },
 
-const name = { fontSize: 10, margin: "2px 0" };
-const price = { fontSize: 11, fontWeight: "bold" };
+  searchInput: {
+    width: "100%",
+    maxWidth: 400,
+    padding: "10px 12px",
+    borderRadius: 10,
+    border: "1px solid #ddd",
+    outline: "none"
+  },
 
-const btn = {
-  width: "100%",
-  padding: 3,
-  fontSize: 10,
-  background: "#ff5722",
-  color: "#fff",
-  border: "none",
-  borderRadius: 3
-};
+  cartBtn: {
+    background: "#2ecc71",
+    color: "#fff",
+    border: "none",
+    padding: "12px 30px",
+    borderRadius: 8,
+    cursor: "pointer",
+    fontWeight: "bold"
+  },
 
-const overlay = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.5)",
-  display: "flex",
-  justifyContent: "flex-end"
-};
+  /* 🔥 BANNER FIXO ESTÁVEL */
+  stripBanner: {
+    width: "100%",
+    height: 48, // 🔥 FIXO (NUNCA MUDA)
+    background: "linear-gradient(90deg, #2ecc71, #27ae60)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
+    letterSpacing: 0.5,
+    boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+    overflow: "hidden"
+  },
 
-const side = {
-  width: 260,
-  height: "100vh",
-  background: "#fff",
-  display: "flex",
-  flexDirection: "column"
-};
+  bannerText: {
+    transition: "opacity 0.3s ease"
+  },
 
-const sideHeader = {
-  padding: 8,
-  borderBottom: "1px solid #ddd"
-};
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
+    gap: 12,
+    padding: 15
+  },
 
-const scroll = {
-  flex: 1,
-  overflowY: "auto",
-  padding: 8
-};
+  card: {
+    background: "#fff",
+    borderRadius: 14,
+    overflow: "hidden",
+    cursor: "pointer",
+    boxShadow: "0 5px 15px rgba(0,0,0,0.06)"
+  },
 
-const sideFooter = {
-  padding: 8,
-  borderTop: "1px solid #ddd"
-};
+  imgBox: {
+    width: "100%",
+    height: 150,
+    background: "#eee"
+  },
 
-const cartItem = {
-  borderBottom: "1px solid #eee",
-  padding: 5
-};
+  img: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover"
+  },
 
-const cartBtn = {
-  background: "#fff",
-  color: "#ff5722",
-  border: "none",
-  padding: 5,
-  borderRadius: 4
+  info: {
+    padding: 10
+  },
+
+  name: {
+    fontSize: 14,
+    margin: 0
+  },
+
+  price: {
+    marginTop: 5,
+    color: "#2ecc71",
+    fontWeight: "bold"
+  }
 };
