@@ -79,6 +79,8 @@ export default function Home() {
     loadData();
   }, []);
 
+  const destaques = produtos.filter((p) => p.destaque && p.capa);
+
   useEffect(() => {
     const el = trackRef.current;
     if (!el || destaques.length === 0) return;
@@ -95,10 +97,9 @@ export default function Home() {
     };
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [produtos]);
+  }, [destaques]);
 
   const cartCount = cart?.reduce((sum, item) => sum + item.qty, 0) || 0;
-  const destaques = produtos.filter((p) => p.destaque && p.capa);
 
   const normalize = (text) => (text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
@@ -159,9 +160,13 @@ export default function Home() {
         <div style={{ opacity: fade ? 1 : 0, transition: '0.3s' }}>{mensagensParaExibir[msgIndex]}</div>
       </div>
 
-      {/* CARROSSEL */}
+      {/* CARROSSEL - CORRIGIDO: relative no mobile para não criar buraco */}
       {destaques.length > 0 && (
-        <div style={{...styles.carouselFixed, top: isMobile ? (lojaAberta ? 214 : 254) : (lojaAberta ? 172 : 212) }}>
+        <div style={{
+          ...styles.carouselFixed, 
+          position: isMobile ? 'relative' : 'sticky', 
+          top: isMobile ? 0 : (lojaAberta ? 172 : 212) 
+        }}>
           <h2 style={styles.title}>🔥 Os Queridinhos da Semana</h2>
           <div style={styles.carouselWindow}>
             <div ref={trackRef} style={styles.carouselTrack}>
@@ -176,15 +181,15 @@ export default function Home() {
         </div>
       )}
 
-      {/* GRADE - AJUSTE DE MARGEM DINÂMICA */}
+      {/* GRADE - AJUSTE: marginTop zerado para colar no carrossel/banner */}
       <main style={{
         ...styles.grid,
         gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill,minmax(180px,1fr))',
         padding: isMobile ? '10px' : '20px',
         gap: isMobile ? '10px' : '20px',
-        // Se tiver destaques, dá o espaço do carrossel. Se não tiver, fica colado no banner.
-        marginTop: isMobile ? (destaques.length > 0 ? 170 : 20) : 20,
+        marginTop: 10,
         width: '100%',
+        maxWidth: '100%',
         boxSizing: 'border-box'
       }}>
         {produtosFiltrados.map((p) => (
@@ -209,7 +214,7 @@ export default function Home() {
 
 const styles = {
   closedBar: { background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center", fontWeight: "bold", fontSize: "14px", position: "sticky", top: 0, zIndex: 2000 },
-  page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "'Segoe UI', Roboto, sans-serif", width: '100%' },
+  page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "'Segoe UI', Roboto, sans-serif", width: '100%', maxWidth: '100vw' },
   header: { position: "sticky", top: 0, zIndex: 1000, background: "#fff", display: "flex", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", width: '100%' },
   searchInput: { width: "100%", maxWidth: 420, padding: "12px 20px", borderRadius: "25px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none" },
   cartBtn: { background: "#2ecc71", color: "#fff", border: "none", padding: "8px 15px", borderRadius: "25px", cursor: "pointer", fontWeight: "bold", fontSize: "13px" },
@@ -217,7 +222,7 @@ const styles = {
   categoryLeft: { display: "flex", gap: 8 },
   categoryBtn: { border: "1px solid #e2e8f0", padding: "8px 14px", borderRadius: "20px", cursor: "pointer", fontSize: "10px", fontWeight: "bold", whiteSpace: "nowrap" },
   stripBanner: { position: "sticky", height: 44, zIndex: 998, background: "#2ecc71", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "13px", fontWeight: "500", width: '100%' },
-  carouselFixed: { position: "sticky", width: "100%", background: "#fff", padding: "10px 0", zIndex: 997, borderBottom: "1px solid #f1f5f9" },
+  carouselFixed: { width: "100%", background: "#fff", padding: "10px 0", zIndex: 997, borderBottom: "1px solid #f1f5f9" },
   title: { textAlign: "center", fontSize: "15px", color: "#1e293b", marginBottom: 8, fontWeight: "800" },
   carouselWindow: { overflow: "hidden", width: "100%" },
   carouselTrack: { display: "flex", gap: 12, width: "max-content" },
