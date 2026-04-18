@@ -11,14 +11,11 @@ export default function Home() {
   const [categorias, setCategorias] = useState([]);
   const [search, setSearch] = useState("");
   const [categoriaAtiva, setCategoriaAtiva] = useState("todos");
-  
-  // NOVOS ESTADOS: Status da Loja e Aviso Dinâmico
   const [lojaAberta, setLojaAberta] = useState(true);
   const [avisoDestaque, setAvisoDestaque] = useState("");
 
   const router = useRouter();
   const { cart } = useCart();
-
   const trackRef = useRef(null);
   const positionRef = useRef(0);
   const widthRef = useRef(0);
@@ -35,7 +32,6 @@ export default function Home() {
   const [msgIndex, setMsgIndex] = useState(0);
   const [fade, setFade] = useState(true);
 
-  // 1. ESCUTA O STATUS DA LOJA E AVISO EM TEMPO REAL
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
       if (snap.exists()) {
@@ -47,7 +43,6 @@ export default function Home() {
     return () => unsub();
   }, []);
 
-  // Efeito da barra de mensagens (Se houver aviso destaque, ele vira a primeira mensagem)
   const mensagensParaExibir = avisoDestaque ? [avisoDestaque, ...mensagensPadrao] : mensagensPadrao;
 
   useEffect(() => {
@@ -61,7 +56,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [mensagensParaExibir.length]);
 
-  // Carregamento de dados dos produtos
   useEffect(() => {
     async function loadData() {
       try {
@@ -94,7 +88,6 @@ export default function Home() {
     return (catFiltro === "todos" || catProduto === catFiltro) && matchSearch;
   });
 
-  // Animação do Carrossel
   useEffect(() => {
     const el = trackRef.current;
     if (!el || destaques.length === 0) return;
@@ -116,24 +109,28 @@ export default function Home() {
 
   return (
     <div style={styles.page}>
-      
-      {/* 2. AVISO DE LOJA FECHADA (Aparece apenas se lojaAberta for false) */}
       {!lojaAberta && (
         <div style={styles.closedBar}>
           🚩 No momento estamos em recesso. Apenas visualização disponível.
         </div>
       )}
 
-      {/* Botão Flutuante WhatsApp */}
       <a href="https://wa.me/5512981654900" target="_blank" rel="noopener noreferrer" style={styles.whatsappFab}>
         <img src="https://cdn-icons-png.flaticon.com/512/3670/3670051.png" style={{width: 35}} alt="WhatsApp" />
       </a>
 
-      {/* Header */}
       <header style={styles.header}>
-        <div style={styles.logoBox} onClick={() => router.push("/")}>
-          <img src="/logo.png" style={styles.logo} alt="Logo" />
+        <div style={styles.headerTop}>
+            <div style={styles.logoBox} onClick={() => router.push("/")}>
+                <img src="/logo.png" style={styles.logo} alt="Logo" />
+            </div>
+            <div style={styles.cartContainer}>
+                <button style={styles.cartBtn} onClick={() => router.push("/carrinho")}>
+                    🛒 ({cartCount})
+                </button>
+            </div>
         </div>
+        
         <div style={styles.searchBox}>
           <input
             placeholder="O que você precisa hoje?"
@@ -142,14 +139,8 @@ export default function Home() {
             style={styles.searchInput}
           />
         </div>
-        <div style={styles.cartContainer}>
-          <button style={styles.cartBtn} onClick={() => router.push("/carrinho")}>
-            🛒 ({cartCount})
-          </button>
-        </div>
       </header>
 
-      {/* Barra de Categorias */}
       <div style={styles.categoryBar}>
         <div style={styles.categoryLeft}>
           <button
@@ -168,6 +159,7 @@ export default function Home() {
             </button>
           ))}
         </div>
+        {/* Instagram agora está fora do scroll para não prender */}
         <div style={styles.categoryRight}>
           <a href="https://www.instagram.com/festaemtopo" target="_blank" rel="noopener noreferrer">
             <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" style={styles.instaIcon} alt="Instagram" />
@@ -175,17 +167,15 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Banner de Mensagens (Inclui o aviso destaque se existir) */}
       <div style={styles.stripBanner}>
-        <div style={{ opacity: fade ? 1 : 0, transition: '0.3s' }}>
+        <div style={{ opacity: fade ? 1 : 0, transition: '0.3s', textAlign: 'center', padding: '0 10px' }}>
           {mensagensParaExibir[msgIndex]}
         </div>
       </div>
 
-      {/* Carrossel de Destaques */}
       {destaques.length > 0 && (
         <div style={styles.carouselFixed}>
-          <h2 style={styles.title}>🔥 Os Queridinhos da Semana</h2>
+          <h2 style={styles.title}>🔥 Os Queridinhos</h2>
           <div style={styles.carouselWindow}>
             <div ref={trackRef} style={styles.carouselTrack} onMouseEnter={() => pausedRef.current = true} onMouseLeave={() => pausedRef.current = false}>
               {[...destaques, ...destaques].map((p, i) => (
@@ -199,7 +189,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Grade de Produtos */}
       <main style={styles.grid}>
         {produtosFiltrados.map((p) => (
           <div key={p.id} style={styles.card} onClick={() => router.push(`/produto/${p.id}`)}>
@@ -230,55 +219,93 @@ export default function Home() {
 }
 
 const styles = {
-  // Adicionado estilo da barra de loja fechada
   closedBar: {
-    background: "#e74c3c",
-    color: "#fff",
-    padding: "10px",
-    textAlign: "center",
-    fontWeight: "bold",
-    fontSize: "14px",
-    position: "sticky",
-    top: 0,
-    zIndex: 2000,
-    boxShadow: "0 2px 10px rgba(0,0,0,0.1)"
+    background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center",
+    fontWeight: "bold", fontSize: "12px", position: "sticky", top: 0, zIndex: 3000
   },
   page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "'Segoe UI', Roboto, sans-serif" },
   whatsappFab: { 
-    position: "fixed", bottom: 20, right: 20, width: 60, height: 60, 
+    position: "fixed", bottom: 20, right: 20, width: 55, height: 55, 
     background: "#25d366", borderRadius: "50%", display: "flex", 
     alignItems: "center", justifyContent: "center", boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
-    zIndex: 9999, transition: "0.3s"
+    zIndex: 9999
   },
-  header: { position: "sticky", top: 0, zIndex: 1000, background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 80, boxShadow: "0 2px 10px rgba(0,0,0,0.05)" },
-  logoBox: { display: "flex", alignItems: "center", height: 80, width: 200, position: "relative", cursor: "pointer" },
-  logo: { height: 120, width: "auto", objectFit: "contain", position: "absolute", top: 62.5, transform: "translateY(-50%)", left: 0, zIndex: 1100 },
-  searchBox: { flex: 1, display: "flex", justifyContent: "center" },
-  searchInput: { width: "100%", maxWidth: 420, padding: "12px 20px", borderRadius: "25px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none", transition: "0.3s" },
-  cartContainer: { width: 200, display: "flex", justifyContent: "flex-end" },
-  cartBtn: { background: "#2ecc71", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "25px", cursor: "pointer", fontWeight: "bold" },
-  categoryBar: { position: "sticky", top: 80, zIndex: 999, background: "#fff", display: "flex", justifyContent: "center", alignItems: "center", padding: "10px 16px", gap: 20, borderBottom: "1px solid #f1f5f9", overflowX: "auto" },
-  categoryLeft: { display: "flex", gap: 10 },
-  categoryBtn: { border: "1px solid #e2e8f0", padding: "8px 16px", borderRadius: "20px", cursor: "pointer", fontSize: "11px", fontWeight: "bold", whiteSpace: "nowrap", transition: "0.2s" },
-  categoryRight: { position: "absolute", right: 16 },
-  instaIcon: { width: 26, height: 26 },
-  stripBanner: { position: "sticky", top: 128, height: 44, zIndex: 998, background: "#2ecc71", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "14px", fontWeight: "500" },
-  carouselFixed: { position: "sticky", top: 172, width: "100%", background: "#fff", padding: "15px 0", zIndex: 997, borderBottom: "1px solid #f1f5f9" },
-  title: { textAlign: "center", fontSize: "18px", color: "#1e293b", marginBottom: 12, fontWeight: "800" },
+  // --- HEADER AJUSTADO PARA MOBILE ---
+  header: { 
+    position: "sticky", top: 0, zIndex: 2000, background: "#fff", 
+    display: "flex", flexDirection: "column", padding: "10px 16px", 
+    boxShadow: "0 2px 10px rgba(0,0,0,0.05)", gap: "10px"
+  },
+  headerTop: {
+    display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%"
+  },
+  logoBox: { height: 50, display: "flex", alignItems: "center", cursor: "pointer" },
+  logo: { height: 80, width: "auto", objectFit: "contain" }, // Logo menor no mobile
+  searchBox: { width: "100%" },
+  searchInput: { 
+    width: "100%", padding: "10px 15px", borderRadius: "20px", 
+    border: "1px solid #e2e8f0", fontSize: "14px", outline: "none" 
+  },
+  cartContainer: { display: "flex", alignItems: "center" },
+  cartBtn: { 
+    background: "#2ecc71", color: "#fff", border: "none", 
+    padding: "8px 15px", borderRadius: "20px", cursor: "pointer", 
+    fontWeight: "bold", fontSize: "13px" 
+  },
+  // --- BARRA DE CATEGORIAS AJUSTADA ---
+  categoryBar: { 
+    position: "sticky", top: 115, zIndex: 1999, background: "#fff", 
+    display: "flex", alignItems: "center", padding: "8px 16px", 
+    borderBottom: "1px solid #f1f5f9", overflow: "hidden" // Container pai não rola
+  },
+  categoryLeft: { 
+    display: "flex", gap: 8, overflowX: "auto", paddingRight: "40px",
+    scrollbarWidth: "none", WebkitOverflowScrolling: "touch", width: "100%"
+  },
+  categoryBtn: { 
+    border: "1px solid #e2e8f0", padding: "6px 14px", borderRadius: "15px", 
+    fontSize: "10px", fontWeight: "bold", whiteSpace: "nowrap" 
+  },
+  categoryRight: { 
+    position: "absolute", right: 10, background: "rgba(255,255,255,0.9)", 
+    paddingLeft: "10px", display: "flex", alignItems: "center" 
+  },
+  instaIcon: { width: 24, height: 24 },
+  
+  // --- BANNER E CARROSSEL ---
+  stripBanner: { 
+    position: "relative", height: 40, background: "#2ecc71", 
+    display: "flex", alignItems: "center", justifyContent: "center", 
+    color: "#fff", fontSize: "12px", fontWeight: "500" 
+  },
+  carouselFixed: { 
+    width: "100%", background: "#fff", padding: "15px 0", 
+    borderBottom: "1px solid #f1f5f9" 
+  },
+  title: { textAlign: "center", fontSize: "16px", color: "#1e293b", marginBottom: 10, fontWeight: "800" },
   carouselWindow: { overflow: "hidden", width: "100%" },
-  carouselTrack: { display: "flex", gap: 14, width: "max-content" },
-  cardCar: { width: 150, textAlign: "center", cursor: "pointer" },
-  imgCar: { width: "100%", height: 110, objectFit: "cover", borderRadius: "12px" },
-  nameCar: { marginTop: 6, fontSize: "12px", color: "#475569", fontWeight: "500" },
-  grid: { marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: "20px", padding: "20px" },
-  card: { background: "#fff", borderRadius: "16px", overflow: "hidden", boxShadow: "0 4px 15px rgba(0,0,0,0.05)", cursor: "pointer", transition: "0.3s", display: "flex", flexDirection: "column" },
-  imgWrapper: { position: "relative", width: "100%", height: 180 },
-  bestSellerBadge: { position: "absolute", top: 10, left: 10, background: "#f1c40f", color: "#000", fontSize: "9px", fontWeight: "bold", padding: "4px 8px", borderRadius: "4px", zIndex: 5 },
+  carouselTrack: { display: "flex", gap: 12, width: "max-content" },
+  cardCar: { width: 130, textAlign: "center" },
+  imgCar: { width: "100%", height: 100, objectFit: "cover", borderRadius: "10px" },
+  nameCar: { marginTop: 4, fontSize: "11px", color: "#475569" },
+  
+  // --- GRADE DE PRODUTOS ---
+  grid: { 
+    display: "grid", 
+    gridTemplateColumns: "1fr 1fr", // Duas colunas fixas no mobile para ficar mais bonito
+    gap: "12px", padding: "12px" 
+  },
+  card: { background: "#fff", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" },
+  imgWrapper: { position: "relative", width: "100%", height: 150 },
+  bestSellerBadge: { 
+    position: "absolute", top: 8, left: 8, background: "#f1c40f", 
+    color: "#000", fontSize: "8px", fontWeight: "bold", padding: "3px 6px", borderRadius: "3px" 
+  },
   img: { width: "100%", height: "100%", objectFit: "cover" },
-  info: { padding: "15px", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" },
-  productName: { fontSize: "14px", color: "#334155", marginBottom: "8px", fontWeight: "600" },
-  priceContainer: { marginBottom: "12px", display: 'flex', flexDirection: 'column', alignItems: 'center' },
-  priceLabel: { fontSize: "12px", color: "#94a3b8" },
-  priceValue: { fontSize: "20px", color: "#2ecc71", fontWeight: "800" },
-  viewBtn: { background: "#f1f5f9", color: "#64748b", border: "none", padding: "8px", borderRadius: "8px", fontSize: "12px", fontWeight: "bold", width: "100%", cursor: "pointer" }
+  info: { padding: "10px", textAlign: "center" },
+  productName: { fontSize: "13px", color: "#334155", marginBottom: "5px", height: "32px", overflow: "hidden" },
+  priceContainer: { marginBottom: "8px" },
+  priceLabel: { fontSize: "10px", color: "#94a3b8" },
+  priceValue: { fontSize: "16px", color: "#2ecc71", fontWeight: "800" },
+  viewBtn: { background: "#f1f5f9", color: "#64748b", border: "none", padding: "6px", borderRadius: "6px", fontSize: "11px", fontWeight: "bold", width: "100%" }
 };
