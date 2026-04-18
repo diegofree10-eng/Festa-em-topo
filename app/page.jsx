@@ -18,7 +18,6 @@ export default function Home() {
   const router = useRouter();
   const { cart } = useCart();
   
-  // Refs para o Carrossel
   const trackRef = useRef(null);
   const positionRef = useRef(0);
   const widthRef = useRef(0);
@@ -72,28 +71,20 @@ export default function Home() {
         const qProd = query(collection(db, "produtos"), orderBy("createdAt", "desc"));
         const snapProd = await getDocs(qProd);
         setProdutos(snapProd.docs.map((d) => ({ id: d.id, ...d.data() })));
-
         const qCat = collection(db, "categorias");
         const snapCat = await getDocs(qCat);
         setCategorias(snapCat.docs.map(d => d.data().nome));
-      } catch (err) {
-        console.error("Erro ao carregar dados:", err);
-      }
+      } catch (err) { console.error(err); }
     }
     loadData();
   }, []);
 
-  const cartCount = cart?.reduce((sum, item) => sum + item.qty, 0) || 0;
-  const destaques = produtos.filter((p) => p.destaque && p.capa);
-
-  // Lógica de Animação do Carrossel
   useEffect(() => {
     const el = trackRef.current;
     if (!el || destaques.length === 0) return;
     const speed = 0.6;
     const updateWidth = () => { widthRef.current = el.scrollWidth / 2; };
     setTimeout(updateWidth, 500);
-    
     const animate = () => {
       if (!pausedRef.current && widthRef.current > 0) {
         positionRef.current += speed;
@@ -104,10 +95,12 @@ export default function Home() {
     };
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [destaques]);
+  }, [produtos]);
 
-  const normalize = (text) =>
-    (text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const cartCount = cart?.reduce((sum, item) => sum + item.qty, 0) || 0;
+  const destaques = produtos.filter((p) => p.destaque && p.capa);
+
+  const normalize = (text) => (text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
   const produtosFiltrados = produtos.filter((p) => {
     const nome = normalize(p.nome);
@@ -119,20 +112,13 @@ export default function Home() {
   });
 
   return (
-    <div style={styles.page}>
+    <div style={{...styles.page, overflowX: 'hidden'}}>
       {!lojaAberta && (
-        <div style={styles.closedBar}>
-          🚩 No momento estamos em recesso. Apenas visualização disponível.
-        </div>
+        <div style={styles.closedBar}>🚩 No momento estamos em recesso. Apenas visualização disponível.</div>
       )}
 
       {/* HEADER */}
-      <header style={{
-        ...styles.header,
-        height: isMobile ? 'auto' : 80,
-        flexDirection: 'column',
-        padding: isMobile ? '10px' : '0 16px',
-      }}>
+      <header style={{...styles.header, height: isMobile ? 'auto' : 80, flexDirection: 'column', padding: isMobile ? '10px' : '0 16px'}}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', height: isMobile ? 60 : 80 }}>
           <div style={{ cursor: "pointer", display: 'flex', alignItems: 'center', height: '100%', position: 'relative', width: isMobile ? 120 : 200 }} onClick={() => router.push("/")}>
             <img src="/logo.png" style={{ height: isMobile ? 50 : 120, width: 'auto', position: isMobile ? 'static' : 'absolute', top: isMobile ? '0' : 62.5, transform: isMobile ? 'none' : 'translateY(-50%)' }} alt="Logo" />
@@ -159,33 +145,26 @@ export default function Home() {
       </header>
 
       {/* CATEGORIAS */}
-      <div style={{ ...styles.categoryBar, top: isMobile ? (lojaAberta ? 125 : 165) : (lojaAberta ? 80 : 120) }}>
+      <div style={{ ...styles.categoryBar, top: isMobile ? (lojaAberta ? 122 : 162) : (lojaAberta ? 80 : 120) }}>
         <div style={styles.categoryLeft}>
           <button onClick={() => setCategoriaAtiva("todos")} style={{...styles.categoryBtn, background: categoriaAtiva === "todos" ? "#2ecc71" : "#fff", color: categoriaAtiva === "todos" ? "#fff" : "#333"}}>TODOS</button>
           {categorias.map((cat) => (
             <button key={cat} onClick={() => setCategoriaAtiva(cat)} style={{...styles.categoryBtn, background: normalize(categoriaAtiva) === normalize(cat) ? "#2ecc71" : "#fff", color: normalize(categoriaAtiva) === normalize(cat) ? "#fff" : "#333"}}>{cat.toUpperCase()}</button>
           ))}
         </div>
-        {!isMobile && (
-          <div style={styles.categoryRight}>
-            <a href="https://www.instagram.com/festaemtopo" target="_blank" rel="noopener noreferrer">
-              <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" style={styles.instaIcon} alt="Instagram" />
-            </a>
-          </div>
-        )}
       </div>
 
       {/* BANNER */}
-      <div style={{...styles.stripBanner, top: isMobile ? (lojaAberta ? 173 : 213) : (lojaAberta ? 128 : 168)}}>
+      <div style={{...styles.stripBanner, top: isMobile ? (lojaAberta ? 170 : 210) : (lojaAberta ? 128 : 168)}}>
         <div style={{ opacity: fade ? 1 : 0, transition: '0.3s' }}>{mensagensParaExibir[msgIndex]}</div>
       </div>
 
-      {/* CARROSSEL VOLTOU AQUI */}
+      {/* CARROSSEL */}
       {destaques.length > 0 && (
-        <div style={{...styles.carouselFixed, top: isMobile ? (lojaAberta ? 217 : 257) : (lojaAberta ? 172 : 212) }}>
+        <div style={{...styles.carouselFixed, top: isMobile ? (lojaAberta ? 214 : 254) : (lojaAberta ? 172 : 212) }}>
           <h2 style={styles.title}>🔥 Os Queridinhos da Semana</h2>
           <div style={styles.carouselWindow}>
-            <div ref={trackRef} style={styles.carouselTrack} onMouseEnter={() => pausedRef.current = true} onMouseLeave={() => pausedRef.current = false}>
+            <div ref={trackRef} style={styles.carouselTrack}>
               {[...destaques, ...destaques].map((p, i) => (
                 <div key={i} style={styles.cardCar} onClick={() => router.push(`/produto/${p.id}`)}>
                   <img src={p.capa || null} style={styles.imgCar} alt={p.nome} />
@@ -197,13 +176,16 @@ export default function Home() {
         </div>
       )}
 
-      {/* GRADE DE PRODUTOS */}
+      {/* GRADE - AJUSTE DE MARGEM DINÂMICA */}
       <main style={{
         ...styles.grid,
         gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill,minmax(180px,1fr))',
         padding: isMobile ? '10px' : '20px',
         gap: isMobile ? '10px' : '20px',
-        marginTop: isMobile ? (destaques.length > 0 ? 250 : 100) : 20
+        // Se tiver destaques, dá o espaço do carrossel. Se não tiver, fica colado no banner.
+        marginTop: isMobile ? (destaques.length > 0 ? 170 : 20) : 20,
+        width: '100%',
+        boxSizing: 'border-box'
       }}>
         {produtosFiltrados.map((p) => (
           <div key={p.id} style={styles.card} onClick={() => router.push(`/produto/${p.id}`)}>
@@ -227,28 +209,26 @@ export default function Home() {
 
 const styles = {
   closedBar: { background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center", fontWeight: "bold", fontSize: "14px", position: "sticky", top: 0, zIndex: 2000 },
-  page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "'Segoe UI', Roboto, sans-serif" },
-  header: { position: "sticky", top: 0, zIndex: 1000, background: "#fff", display: "flex", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" },
+  page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "'Segoe UI', Roboto, sans-serif", width: '100%' },
+  header: { position: "sticky", top: 0, zIndex: 1000, background: "#fff", display: "flex", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", width: '100%' },
   searchInput: { width: "100%", maxWidth: 420, padding: "12px 20px", borderRadius: "25px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none" },
   cartBtn: { background: "#2ecc71", color: "#fff", border: "none", padding: "8px 15px", borderRadius: "25px", cursor: "pointer", fontWeight: "bold", fontSize: "13px" },
-  categoryBar: { position: "sticky", zIndex: 999, background: "#fff", display: "flex", justifyContent: "center", alignItems: "center", padding: "10px 16px", gap: 10, borderBottom: "1px solid #f1f5f9", overflowX: "auto" },
+  categoryBar: { position: "sticky", zIndex: 999, background: "#fff", display: "flex", justifyContent: "center", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #f1f5f9", overflowX: "auto", width: '100%' },
   categoryLeft: { display: "flex", gap: 8 },
   categoryBtn: { border: "1px solid #e2e8f0", padding: "8px 14px", borderRadius: "20px", cursor: "pointer", fontSize: "10px", fontWeight: "bold", whiteSpace: "nowrap" },
-  categoryRight: { position: "absolute", right: 16 },
-  instaIcon: { width: 24, height: 24 },
-  stripBanner: { position: "sticky", height: 44, zIndex: 998, background: "#2ecc71", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "13px", fontWeight: "500" },
+  stripBanner: { position: "sticky", height: 44, zIndex: 998, background: "#2ecc71", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "13px", fontWeight: "500", width: '100%' },
   carouselFixed: { position: "sticky", width: "100%", background: "#fff", padding: "10px 0", zIndex: 997, borderBottom: "1px solid #f1f5f9" },
-  title: { textAlign: "center", fontSize: "16px", color: "#1e293b", marginBottom: 8, fontWeight: "800" },
+  title: { textAlign: "center", fontSize: "15px", color: "#1e293b", marginBottom: 8, fontWeight: "800" },
   carouselWindow: { overflow: "hidden", width: "100%" },
   carouselTrack: { display: "flex", gap: 12, width: "max-content" },
   cardCar: { width: 120, textAlign: "center", cursor: "pointer" },
   imgCar: { width: "100%", height: 90, objectFit: "cover", borderRadius: "12px" },
   nameCar: { marginTop: 4, fontSize: "10px", color: "#475569", fontWeight: "500" },
   grid: { display: "grid" },
-  card: { background: "#fff", borderRadius: "16px", overflow: "hidden", boxShadow: "0 4px 15px rgba(0,0,0,0.05)", cursor: "pointer", display: "flex", flexDirection: "column" },
+  card: { background: "#fff", borderRadius: "16px", overflow: "hidden", boxShadow: "0 4px 15px rgba(0,0,0,0.05)", display: "flex", flexDirection: "column" },
   imgWrapper: { position: "relative", width: "100%" },
   img: { width: "100%", height: "100%", objectFit: "cover" },
-  info: { padding: "12px", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" },
+  info: { padding: "10px", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" },
   productName: { color: "#334155", marginBottom: "4px", fontWeight: "600" },
   priceContainer: { marginBottom: "8px" },
   priceLabel: { fontSize: "11px", color: "#94a3b8" },
