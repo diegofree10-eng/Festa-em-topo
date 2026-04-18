@@ -10,14 +10,14 @@ export default function AdminPedidos() {
   
   const [isLogged, setIsLogged] = useState(false);
   const [password, setPassword] = useState("");
+  
+  // CORREÇÃO AQUI: Inicializado como array vazio tipado implicitamente para evitar erro no build da Vercel
   const [pedidos, setPedidos] = useState([]);
   const [loading, setLoading] = useState(true);
-  
-  // NOVO: Estado para busca
   const [busca, setBusca] = useState("");
 
   function handleLogin() {
-    const SENHA_MESTRE = "1234"; 
+    const SENHA_MESTRE = "1234"; // Dica: mude isso antes de divulgar o link real!
     if (password === SENHA_MESTRE) {
       setIsLogged(true);
     } else {
@@ -28,6 +28,7 @@ export default function AdminPedidos() {
   useEffect(() => {
     if (!isLogged) return;
     const q = query(collection(db, "registros_pedidos"), orderBy("numeroPedido", "desc"));
+    
     const unsub = onSnapshot(q, (snap) => {
       const lista = snap.docs.map(doc => ({
         id: doc.id,
@@ -48,7 +49,6 @@ export default function AdminPedidos() {
     }
   }
 
-  // ATUALIZADO: Ciclo de status mais completo
   async function alterarStatus(id, statusAtual) {
     const proximosStatus = {
       "Pendente": "Em Produção",
@@ -71,7 +71,6 @@ export default function AdminPedidos() {
     }
   }
 
-  // NOVO: Filtro lógico de busca
   const pedidosFiltrados = pedidos.filter(p => 
     p.cliente?.toLowerCase().includes(busca.toLowerCase()) || 
     p.numeroPedido?.toString().includes(busca)
@@ -82,7 +81,7 @@ export default function AdminPedidos() {
       <div style={styles.loginOverlay}>
         <div style={styles.loginBox}>
           <h2>🔐 Relatórios Protegidos</h2>
-          <p>Digite a senha para visualizar as vendas</p>
+          <p style={{fontSize: '14px', color: '#666', marginBottom: '20px'}}>Digite a senha para visualizar as vendas</p>
           <input 
             type="password" 
             placeholder="Senha" 
@@ -106,31 +105,30 @@ export default function AdminPedidos() {
         <button onClick={() => router.push("/admin")} style={styles.btnBack}>
           ⬅ Voltar ao Painel Admin
         </button>
-        <h1>📊 Gestão de Pedidos</h1>
+        <h1 style={{marginTop: '15px'}}>📊 Gestão de Pedidos</h1>
       </div>
 
       <div style={styles.statsRow}>
         <div style={styles.statCard}>
-          <span>Pedidos Pendentes</span>
-          <h2 style={{ color: "#e67e22" }}>
+          <span style={styles.statLabel}>Pendentes</span>
+          <h2 style={{ color: "#e67e22", margin: '5px 0' }}>
             {pedidos.filter(p => p.status === "Pendente").length}
           </h2>
         </div>
         <div style={styles.statCard}>
-          <span>Faturamento Total</span>
-          <h2>
+          <span style={styles.statLabel}>Faturamento</span>
+          <h2 style={{ margin: '5px 0' }}>
             R$ {pedidos.reduce((acc, p) => acc + (p.financeiro?.total || 0), 0).toFixed(2).replace(".", ",")}
           </h2>
         </div>
         <div style={styles.statCard}>
-          <span>💰 Total Recebido (Pago)</span>
-          <h2 style={{ color: "#2ecc71" }}>
+          <span style={styles.statLabel}>💰 Recebido</span>
+          <h2 style={{ color: "#2ecc71", margin: '5px 0' }}>
             R$ {pedidos.filter(p => p.pago).reduce((acc, p) => acc + (p.financeiro?.total || 0), 0).toFixed(2).replace(".", ",")}
           </h2>
         </div>
       </div>
 
-      {/* NOVO: Barra de Busca */}
       <div style={styles.searchBar}>
         <input 
           type="text" 
@@ -148,7 +146,7 @@ export default function AdminPedidos() {
               <th style={styles.th}>Nº</th>
               <th style={styles.th}>Data</th>
               <th style={styles.th}>Cliente</th>
-              <th style={styles.th}>Produtos / Variação</th>
+              <th style={styles.th}>Produtos</th>
               <th style={styles.th}>Total</th>
               <th style={styles.th}>Ações</th>
             </tr>
@@ -199,7 +197,6 @@ export default function AdminPedidos() {
                       style={{
                         ...styles.statusBtn,
                         backgroundColor: pedido.pago ? "#2ecc71" : "#bdc3c7",
-                        width: "110px"
                       }}
                     >
                       {pedido.pago ? "💰 Pago" : "💵 Confirmar"}
@@ -212,11 +209,10 @@ export default function AdminPedidos() {
                         backgroundColor: 
                           pedido.status === "Concluído" ? "#3498db" : 
                           pedido.status === "Em Produção" ? "#9b59b6" : "#e67e22",
-                        width: "110px"
                       }}
                     >
-                      {pedido.status === "Concluído" ? "✓ Concluído" : 
-                       pedido.status === "Em Produção" ? "🛠️ Produção" : "⏳ Pendente"}
+                      {pedido.status === "Concluído" ? "✓ OK" : 
+                       pedido.status === "Em Produção" ? "🛠️ Prod" : "⏳ Pend"}
                     </button>
 
                     <button onClick={() => apagarPedido(pedido.id)} style={styles.deleteBtn}>🗑️</button>
@@ -227,7 +223,7 @@ export default function AdminPedidos() {
           </tbody>
         </table>
         {pedidosFiltrados.length === 0 && (
-          <div style={{padding: '20px', textAlign: 'center', color: '#64748b'}}>Nenhum pedido encontrado.</div>
+          <div style={{padding: '30px', textAlign: 'center', color: '#64748b'}}>Nenhum pedido encontrado.</div>
         )}
       </div>
     </div>
@@ -236,59 +232,33 @@ export default function AdminPedidos() {
 
 const styles = {
   loginOverlay: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", background: "#f0f2f5" },
-  loginBox: { background: "#fff", padding: "40px", borderRadius: "16px", boxShadow: "0 10px 25px rgba(0,0,0,0.1)", textAlign: "center", width: "300px" },
-  inputLogin: { width: "100%", padding: "12px", marginBottom: "15px", borderRadius: "8px", border: "1px solid #ddd" },
-  btnBack: { marginBottom: "20px", padding: "10px 15px", background: "#3498db", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" },
-  btnBackMinimal: { marginTop: "10px", background: "none", border: "none", color: "#666", cursor: "pointer", textDecoration: "underline" },
+  loginBox: { background: "#fff", padding: "40px", borderRadius: "16px", boxShadow: "0 10px 25px rgba(0,0,0,0.1)", textAlign: "center", width: "90%", maxWidth: "320px" },
+  inputLogin: { width: "100%", padding: "12px", marginBottom: "15px", borderRadius: "8px", border: "1px solid #ddd", boxSizing: "border-box" },
+  btnBack: { padding: "10px 15px", background: "#3498db", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" },
+  btnBackMinimal: { marginTop: "15px", background: "none", border: "none", color: "#666", cursor: "pointer", textDecoration: "underline", display: 'block', width: '100%' },
   btnGreen: { background: "#2ecc71", color: "#fff", padding: "12px", borderRadius: "8px", border: "none", cursor: "pointer", width: "100%", fontWeight: "bold" },
-  page: { padding: "30px", background: "#f8f9fa", minHeight: "100vh", fontFamily: "sans-serif" },
-  header: { marginBottom: "30px" },
-  loading: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" },
-  statsRow: { display: "flex", gap: "20px", marginBottom: "30px" },
-  statCard: { background: "#fff", padding: "20px", borderRadius: "12px", flex: 1, boxShadow: "0 2px 10px rgba(0,0,0,0.05)" },
-  
-  // Estilos novos da busca
+  page: { padding: "15px", background: "#f8f9fa", minHeight: "100vh", fontFamily: "sans-serif" },
+  header: { marginBottom: "20px" },
+  loading: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", color: "#64748b" },
+  statsRow: { display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: "20px" },
+  statCard: { background: "#fff", padding: "15px", borderRadius: "12px", flex: "1 1 150px", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" },
+  statLabel: { fontSize: "12px", color: "#64748b", fontWeight: "bold" },
   searchBar: { marginBottom: "20px" },
-  searchInput: { width: "100%", maxWidth: "400px", padding: "12px 20px", borderRadius: "25px", border: "1px solid #cbd5e1", outline: "none", fontSize: "14px", boxShadow: "0 2px 5px rgba(0,0,0,0.02)" },
-
-  tableContainer: { background: "#fff", borderRadius: "12px", overflowX: "auto", boxShadow: "0 4px 20px rgba(0,0,0,0.08)" },
-  table: { width: "100%", borderCollapse: "collapse", textAlign: "left" },
+  searchInput: { width: "100%", maxWidth: "400px", padding: "12px 20px", borderRadius: "25px", border: "1px solid #cbd5e1", outline: "none", fontSize: "14px", boxSizing: "border-box" },
+  tableContainer: { background: "#fff", borderRadius: "12px", overflowX: "auto", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", WebkitOverflowScrolling: "touch" },
+  table: { width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: "800px" }, // Força scroll lateral se a tela for menor que 800px
   thead: { background: "#2c3e50", color: "#fff" },
-  th: { padding: "15px", fontSize: "13px" },
-  tr: { borderBottom: "1px solid #eee", transition: "0.2s" },
+  th: { padding: "15px", fontSize: "12px", textTransform: "uppercase" },
+  tr: { borderBottom: "1px solid #eee" },
   td: { padding: "15px", fontSize: "14px", color: "#444" },
   tdBold: { padding: "15px", fontWeight: "bold", color: "#2c3e50" },
   tdTotal: { padding: "15px", fontWeight: "bold", color: "#2ecc71" },
-  itemContainer: { marginBottom: "10px" },
-  itemLine: { fontSize: "13px", color: "#334155" },
-  badgeVariacao: { 
-    display: "inline-block", 
-    fontSize: "10px", 
-    fontWeight: "bold", 
-    padding: "2px 8px", 
-    borderRadius: "10px", 
-    marginTop: "4px",
-    color: "#1e293b",
-    border: "1px solid #cbd5e1"
-  },
-  personalizacaoBox: {
-    marginTop: "12px",
-    padding: "8px",
-    background: "#fff9db",
-    borderRadius: "8px",
-    border: "1px dashed #f1c40f",
-  },
-  personalizacaoTitle: {
-    fontSize: "10px",
-    fontWeight: "bold",
-    color: "#856404",
-    marginBottom: "3px"
-  },
-  personalizacaoText: {
-    fontSize: "12px",
-    color: "#444",
-    lineHeight: "1.4"
-  },
-  statusBtn: { border: "none", color: "#fff", padding: "8px 12px", borderRadius: "20px", cursor: "pointer", fontSize: "11px", fontWeight: "bold", transition: "0.3s" },
-  deleteBtn: { background: "none", border: "none", cursor: "pointer", fontSize: "16px", marginLeft: "5px", opacity: 0.6 }
+  itemContainer: { marginBottom: "8px" },
+  itemLine: { fontSize: "13px" },
+  badgeVariacao: { display: "inline-block", fontSize: "10px", fontWeight: "bold", padding: "2px 8px", borderRadius: "10px", marginTop: "4px" },
+  personalizacaoBox: { marginTop: "10px", padding: "8px", background: "#fff9db", borderRadius: "8px", border: "1px dashed #f1c40f" },
+  personalizacaoTitle: { fontSize: "10px", fontWeight: "bold", color: "#856404" },
+  personalizacaoText: { fontSize: "12px", color: "#444" },
+  statusBtn: { border: "none", color: "#fff", padding: "8px 10px", borderRadius: "15px", cursor: "pointer", fontSize: "10px", fontWeight: "bold", width: "85px" },
+  deleteBtn: { background: "none", border: "none", cursor: "pointer", fontSize: "16px", opacity: 0.5 }
 };
