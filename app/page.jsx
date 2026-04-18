@@ -13,6 +13,9 @@ export default function Home() {
   const [categoriaAtiva, setCategoriaAtiva] = useState("todos");
   const [lojaAberta, setLojaAberta] = useState(true);
   const [avisoDestaque, setAvisoDestaque] = useState("");
+  
+  // ESTADO PARA DETECTAR MOBILE
+  const [isMobile, setIsMobile] = useState(false);
 
   const router = useRouter();
   const { cart } = useCart();
@@ -31,6 +34,14 @@ export default function Home() {
 
   const [msgIndex, setMsgIndex] = useState(0);
   const [fade, setFade] = useState(true);
+
+  // Detectar largura da tela
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
@@ -119,18 +130,17 @@ export default function Home() {
         <img src="https://cdn-icons-png.flaticon.com/512/3670/3670051.png" style={{width: 35}} alt="WhatsApp" />
       </a>
 
-      <header style={styles.header}>
-        <div style={styles.headerTop}>
-            <div style={styles.logoBox} onClick={() => router.push("/")}>
-                <img src="/logo.png" style={styles.logo} alt="Logo" />
-            </div>
-            <div style={styles.cartContainer}>
-                <button style={styles.cartBtn} onClick={() => router.push("/carrinho")}>
-                    🛒 ({cartCount})
-                </button>
-            </div>
+      {/* HEADER DINÂMICO */}
+      <header style={{
+        ...styles.header,
+        flexDirection: isMobile ? "column" : "row",
+        height: isMobile ? "auto" : 80,
+        gap: isMobile ? 10 : 20
+      }}>
+        <div style={{...styles.logoBox, width: isMobile ? "auto" : 200}} onClick={() => router.push("/")}>
+          <img src="/logo.png" style={{...styles.logo, height: isMobile ? 70 : 120, position: isMobile ? "relative" : "absolute", top: isMobile ? 0 : 62.5}} alt="Logo" />
         </div>
-        
+
         <div style={styles.searchBox}>
           <input
             placeholder="O que você precisa hoje?"
@@ -139,9 +149,16 @@ export default function Home() {
             style={styles.searchInput}
           />
         </div>
+
+        <div style={{...styles.cartContainer, width: isMobile ? "100%" : 200, justifyContent: isMobile ? "center" : "flex-end"}}>
+          <button style={styles.cartBtn} onClick={() => router.push("/carrinho")}>
+            🛒 Carrinho ({cartCount})
+          </button>
+        </div>
       </header>
 
-      <div style={styles.categoryBar}>
+      {/* CATEGORIAS */}
+      <div style={{...styles.categoryBar, top: isMobile ? 140 : 80}}>
         <div style={styles.categoryLeft}>
           <button
             onClick={() => setCategoriaAtiva("todos")}
@@ -159,7 +176,6 @@ export default function Home() {
             </button>
           ))}
         </div>
-        {/* Instagram agora está fora do scroll para não prender */}
         <div style={styles.categoryRight}>
           <a href="https://www.instagram.com/festaemtopo" target="_blank" rel="noopener noreferrer">
             <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" style={styles.instaIcon} alt="Instagram" />
@@ -167,15 +183,15 @@ export default function Home() {
         </div>
       </div>
 
-      <div style={styles.stripBanner}>
-        <div style={{ opacity: fade ? 1 : 0, transition: '0.3s', textAlign: 'center', padding: '0 10px' }}>
+      <div style={{...styles.stripBanner, top: isMobile ? 185 : 128}}>
+        <div style={{ opacity: fade ? 1 : 0, transition: '0.3s' }}>
           {mensagensParaExibir[msgIndex]}
         </div>
       </div>
 
       {destaques.length > 0 && (
         <div style={styles.carouselFixed}>
-          <h2 style={styles.title}>🔥 Os Queridinhos</h2>
+          <h2 style={styles.title}>🔥 Os Queridinhos da Semana</h2>
           <div style={styles.carouselWindow}>
             <div ref={trackRef} style={styles.carouselTrack} onMouseEnter={() => pausedRef.current = true} onMouseLeave={() => pausedRef.current = false}>
               {[...destaques, ...destaques].map((p, i) => (
@@ -189,7 +205,11 @@ export default function Home() {
         </div>
       )}
 
-      <main style={styles.grid}>
+      {/* GRID RESPONSIVO */}
+      <main style={{
+        ...styles.grid,
+        gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fill, minmax(220px, 1fr))"
+      }}>
         {produtosFiltrados.map((p) => (
           <div key={p.id} style={styles.card} onClick={() => router.push(`/produto/${p.id}`)}>
             <div style={styles.imgWrapper}>
@@ -219,93 +239,38 @@ export default function Home() {
 }
 
 const styles = {
-  closedBar: {
-    background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center",
-    fontWeight: "bold", fontSize: "12px", position: "sticky", top: 0, zIndex: 3000
-  },
+  closedBar: { background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center", fontWeight: "bold", fontSize: "14px", position: "sticky", top: 0, zIndex: 2000 },
   page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "'Segoe UI', Roboto, sans-serif" },
-  whatsappFab: { 
-    position: "fixed", bottom: 20, right: 20, width: 55, height: 55, 
-    background: "#25d366", borderRadius: "50%", display: "flex", 
-    alignItems: "center", justifyContent: "center", boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
-    zIndex: 9999
-  },
-  // --- HEADER AJUSTADO PARA MOBILE ---
-  header: { 
-    position: "sticky", top: 0, zIndex: 2000, background: "#fff", 
-    display: "flex", flexDirection: "column", padding: "10px 16px", 
-    boxShadow: "0 2px 10px rgba(0,0,0,0.05)", gap: "10px"
-  },
-  headerTop: {
-    display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%"
-  },
-  logoBox: { height: 50, display: "flex", alignItems: "center", cursor: "pointer" },
-  logo: { height: 80, width: "auto", objectFit: "contain" }, // Logo menor no mobile
-  searchBox: { width: "100%" },
-  searchInput: { 
-    width: "100%", padding: "10px 15px", borderRadius: "20px", 
-    border: "1px solid #e2e8f0", fontSize: "14px", outline: "none" 
-  },
-  cartContainer: { display: "flex", alignItems: "center" },
-  cartBtn: { 
-    background: "#2ecc71", color: "#fff", border: "none", 
-    padding: "8px 15px", borderRadius: "20px", cursor: "pointer", 
-    fontWeight: "bold", fontSize: "13px" 
-  },
-  // --- BARRA DE CATEGORIAS AJUSTADA ---
-  categoryBar: { 
-    position: "sticky", top: 115, zIndex: 1999, background: "#fff", 
-    display: "flex", alignItems: "center", padding: "8px 16px", 
-    borderBottom: "1px solid #f1f5f9", overflow: "hidden" // Container pai não rola
-  },
-  categoryLeft: { 
-    display: "flex", gap: 8, overflowX: "auto", paddingRight: "40px",
-    scrollbarWidth: "none", WebkitOverflowScrolling: "touch", width: "100%"
-  },
-  categoryBtn: { 
-    border: "1px solid #e2e8f0", padding: "6px 14px", borderRadius: "15px", 
-    fontSize: "10px", fontWeight: "bold", whiteSpace: "nowrap" 
-  },
-  categoryRight: { 
-    position: "absolute", right: 10, background: "rgba(255,255,255,0.9)", 
-    paddingLeft: "10px", display: "flex", alignItems: "center" 
-  },
-  instaIcon: { width: 24, height: 24 },
-  
-  // --- BANNER E CARROSSEL ---
-  stripBanner: { 
-    position: "relative", height: 40, background: "#2ecc71", 
-    display: "flex", alignItems: "center", justifyContent: "center", 
-    color: "#fff", fontSize: "12px", fontWeight: "500" 
-  },
-  carouselFixed: { 
-    width: "100%", background: "#fff", padding: "15px 0", 
-    borderBottom: "1px solid #f1f5f9" 
-  },
-  title: { textAlign: "center", fontSize: "16px", color: "#1e293b", marginBottom: 10, fontWeight: "800" },
+  whatsappFab: { position: "fixed", bottom: 20, right: 20, width: 60, height: 60, background: "#25d366", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 15px rgba(0,0,0,0.2)", zIndex: 9999 },
+  header: { position: "sticky", top: 0, zIndex: 1000, background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" },
+  logoBox: { display: "flex", alignItems: "center", height: "auto", position: "relative", cursor: "pointer" },
+  logo: { width: "auto", objectFit: "contain", zIndex: 1100 },
+  searchBox: { flex: 1, display: "flex", justifyContent: "center" },
+  searchInput: { width: "100%", maxWidth: 420, padding: "12px 20px", borderRadius: "25px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none" },
+  cartContainer: { display: "flex" },
+  cartBtn: { background: "#2ecc71", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "25px", cursor: "pointer", fontWeight: "bold" },
+  categoryBar: { position: "sticky", zIndex: 999, background: "#fff", display: "flex", justifyContent: "center", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #f1f5f9", overflowX: "auto" },
+  categoryLeft: { display: "flex", gap: 10 },
+  categoryBtn: { border: "1px solid #e2e8f0", padding: "8px 16px", borderRadius: "20px", cursor: "pointer", fontSize: "11px", fontWeight: "bold", whiteSpace: "nowrap" },
+  categoryRight: { marginLeft: "15px" },
+  instaIcon: { width: 26, height: 26 },
+  stripBanner: { position: "sticky", height: 44, zIndex: 998, background: "#2ecc71", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "14px", fontWeight: "500" },
+  carouselFixed: { width: "100%", background: "#fff", padding: "15px 0", borderBottom: "1px solid #f1f5f9" },
+  title: { textAlign: "center", fontSize: "18px", color: "#1e293b", marginBottom: 12, fontWeight: "800" },
   carouselWindow: { overflow: "hidden", width: "100%" },
-  carouselTrack: { display: "flex", gap: 12, width: "max-content" },
-  cardCar: { width: 130, textAlign: "center" },
-  imgCar: { width: "100%", height: 100, objectFit: "cover", borderRadius: "10px" },
-  nameCar: { marginTop: 4, fontSize: "11px", color: "#475569" },
-  
-  // --- GRADE DE PRODUTOS ---
-  grid: { 
-    display: "grid", 
-    gridTemplateColumns: "1fr 1fr", // Duas colunas fixas no mobile para ficar mais bonito
-    gap: "12px", padding: "12px" 
-  },
-  card: { background: "#fff", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" },
-  imgWrapper: { position: "relative", width: "100%", height: 150 },
-  bestSellerBadge: { 
-    position: "absolute", top: 8, left: 8, background: "#f1c40f", 
-    color: "#000", fontSize: "8px", fontWeight: "bold", padding: "3px 6px", borderRadius: "3px" 
-  },
+  carouselTrack: { display: "flex", gap: 14, width: "max-content" },
+  cardCar: { width: 150, textAlign: "center", cursor: "pointer" },
+  imgCar: { width: "100%", height: 110, objectFit: "cover", borderRadius: "12px" },
+  nameCar: { marginTop: 6, fontSize: "12px", color: "#475569", fontWeight: "500" },
+  grid: { display: "grid", gap: "20px", padding: "20px" },
+  card: { background: "#fff", borderRadius: "16px", overflow: "hidden", boxShadow: "0 4px 15px rgba(0,0,0,0.05)", cursor: "pointer", display: "flex", flexDirection: "column" },
+  imgWrapper: { position: "relative", width: "100%", height: 200 },
+  bestSellerBadge: { position: "absolute", top: 10, left: 10, background: "#f1c40f", color: "#000", fontSize: "9px", fontWeight: "bold", padding: "4px 8px", borderRadius: "4px", zIndex: 5 },
   img: { width: "100%", height: "100%", objectFit: "cover" },
-  info: { padding: "10px", textAlign: "center" },
-  productName: { fontSize: "13px", color: "#334155", marginBottom: "5px", height: "32px", overflow: "hidden" },
-  priceContainer: { marginBottom: "8px" },
-  priceLabel: { fontSize: "10px", color: "#94a3b8" },
-  priceValue: { fontSize: "16px", color: "#2ecc71", fontWeight: "800" },
-  viewBtn: { background: "#f1f5f9", color: "#64748b", border: "none", padding: "6px", borderRadius: "6px", fontSize: "11px", fontWeight: "bold", width: "100%" }
+  info: { padding: "15px", textAlign: "center", flex: 1 },
+  productName: { fontSize: "14px", color: "#334155", marginBottom: "8px", fontWeight: "600" },
+  priceContainer: { marginBottom: "12px" },
+  priceLabel: { fontSize: "12px", color: "#94a3b8" },
+  priceValue: { fontSize: "20px", color: "#2ecc71", fontWeight: "800" },
+  viewBtn: { background: "#f1f5f9", color: "#64748b", border: "none", padding: "8px", borderRadius: "8px", fontSize: "12px", fontWeight: "bold", width: "100%" }
 };
