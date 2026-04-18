@@ -13,12 +13,10 @@ export default function Home() {
   const [categoriaAtiva, setCategoriaAtiva] = useState("todos");
   const [lojaAberta, setLojaAberta] = useState(true);
   const [avisoDestaque, setAvisoDestaque] = useState("");
-  
-  // ESTADO PARA DETECTAR MOBILE
-  const [isMobile, setIsMobile] = useState(false);
 
   const router = useRouter();
   const { cart } = useCart();
+
   const trackRef = useRef(null);
   const positionRef = useRef(0);
   const widthRef = useRef(0);
@@ -34,14 +32,6 @@ export default function Home() {
 
   const [msgIndex, setMsgIndex] = useState(0);
   const [fade, setFade] = useState(true);
-
-  // Detectar largura da tela
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
@@ -120,6 +110,50 @@ export default function Home() {
 
   return (
     <div style={styles.page}>
+      
+      {/* CAMADA DE INTELIGÊNCIA PARA CELULAR (Não altera o PC) */}
+      <style jsx global>{`
+        @media (max-width: 768px) {
+          header { 
+            height: auto !important; 
+            flex-direction: column !important; 
+            padding: 15px !important;
+            gap: 15px !important;
+          }
+          .logo-box-mobile { 
+            width: 100% !important; 
+            justify-content: center !important;
+            height: 50px !important;
+          }
+          .logo-img-mobile { 
+            height: 70px !important; 
+            position: relative !important; 
+            top: 0 !important; 
+            transform: none !important;
+          }
+          .search-box-mobile { 
+            width: 100% !important; 
+            order: 3; /* Busca fica por último no mobile */
+          }
+          .cart-box-mobile { 
+            width: 100% !important; 
+            justify-content: center !important;
+            order: 2;
+          }
+          .grid-mobile {
+            grid-template-columns: repeat(2, 1fr) !important; /* 2 colunas no celular */
+            gap: 10px !important;
+            padding: 10px !important;
+          }
+          .category-bar-mobile {
+            top: 180px !important; /* Ajusta a posição da barra fixa no celular */
+          }
+          .banner-mobile {
+            top: 228px !important;
+          }
+        }
+      `}</style>
+
       {!lojaAberta && (
         <div style={styles.closedBar}>
           🚩 No momento estamos em recesso. Apenas visualização disponível.
@@ -130,18 +164,11 @@ export default function Home() {
         <img src="https://cdn-icons-png.flaticon.com/512/3670/3670051.png" style={{width: 35}} alt="WhatsApp" />
       </a>
 
-      {/* HEADER DINÂMICO */}
-      <header style={{
-        ...styles.header,
-        flexDirection: isMobile ? "column" : "row",
-        height: isMobile ? "auto" : 80,
-        gap: isMobile ? 10 : 20
-      }}>
-        <div style={{...styles.logoBox, width: isMobile ? "auto" : 200}} onClick={() => router.push("/")}>
-          <img src="/logo.png" style={{...styles.logo, height: isMobile ? 70 : 120, position: isMobile ? "relative" : "absolute", top: isMobile ? 0 : 62.5}} alt="Logo" />
+      <header style={styles.header}>
+        <div style={styles.logoBox} className="logo-box-mobile" onClick={() => router.push("/")}>
+          <img src="/logo.png" style={styles.logo} className="logo-img-mobile" alt="Logo" />
         </div>
-
-        <div style={styles.searchBox}>
+        <div style={styles.searchBox} className="search-box-mobile">
           <input
             placeholder="O que você precisa hoje?"
             value={search}
@@ -149,16 +176,14 @@ export default function Home() {
             style={styles.searchInput}
           />
         </div>
-
-        <div style={{...styles.cartContainer, width: isMobile ? "100%" : 200, justifyContent: isMobile ? "center" : "flex-end"}}>
+        <div style={styles.cartContainer} className="cart-box-mobile">
           <button style={styles.cartBtn} onClick={() => router.push("/carrinho")}>
-            🛒 Carrinho ({cartCount})
+            🛒 ({cartCount})
           </button>
         </div>
       </header>
 
-      {/* CATEGORIAS */}
-      <div style={{...styles.categoryBar, top: isMobile ? 140 : 80}}>
+      <div style={styles.categoryBar} className="category-bar-mobile">
         <div style={styles.categoryLeft}>
           <button
             onClick={() => setCategoriaAtiva("todos")}
@@ -183,7 +208,7 @@ export default function Home() {
         </div>
       </div>
 
-      <div style={{...styles.stripBanner, top: isMobile ? 185 : 128}}>
+      <div style={styles.stripBanner} className="banner-mobile">
         <div style={{ opacity: fade ? 1 : 0, transition: '0.3s' }}>
           {mensagensParaExibir[msgIndex]}
         </div>
@@ -205,11 +230,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* GRID RESPONSIVO */}
-      <main style={{
-        ...styles.grid,
-        gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fill, minmax(220px, 1fr))"
-      }}>
+      <main style={styles.grid} className="grid-mobile">
         {produtosFiltrados.map((p) => (
           <div key={p.id} style={styles.card} onClick={() => router.push(`/produto/${p.id}`)}>
             <div style={styles.imgWrapper}>
@@ -239,38 +260,38 @@ export default function Home() {
 }
 
 const styles = {
-  closedBar: { background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center", fontWeight: "bold", fontSize: "14px", position: "sticky", top: 0, zIndex: 2000 },
+  closedBar: { background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center", fontWeight: "bold", fontSize: "14px", position: "sticky", top: 0, zIndex: 2000, boxShadow: "0 2px 10px rgba(0,0,0,0.1)" },
   page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "'Segoe UI', Roboto, sans-serif" },
-  whatsappFab: { position: "fixed", bottom: 20, right: 20, width: 60, height: 60, background: "#25d366", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 15px rgba(0,0,0,0.2)", zIndex: 9999 },
-  header: { position: "sticky", top: 0, zIndex: 1000, background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" },
-  logoBox: { display: "flex", alignItems: "center", height: "auto", position: "relative", cursor: "pointer" },
-  logo: { width: "auto", objectFit: "contain", zIndex: 1100 },
+  whatsappFab: { position: "fixed", bottom: 20, right: 20, width: 60, height: 60, background: "#25d366", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 15px rgba(0,0,0,0.2)", zIndex: 9999, transition: "0.3s" },
+  header: { position: "sticky", top: 0, zIndex: 1000, background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 80, boxShadow: "0 2px 10px rgba(0,0,0,0.05)" },
+  logoBox: { display: "flex", alignItems: "center", height: 80, width: 200, position: "relative", cursor: "pointer" },
+  logo: { height: 120, width: "auto", objectFit: "contain", position: "absolute", top: 62.5, transform: "translateY(-50%)", left: 0, zIndex: 1100 },
   searchBox: { flex: 1, display: "flex", justifyContent: "center" },
-  searchInput: { width: "100%", maxWidth: 420, padding: "12px 20px", borderRadius: "25px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none" },
-  cartContainer: { display: "flex" },
+  searchInput: { width: "100%", maxWidth: 420, padding: "12px 20px", borderRadius: "25px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none", transition: "0.3s" },
+  cartContainer: { width: 200, display: "flex", justifyContent: "flex-end" },
   cartBtn: { background: "#2ecc71", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "25px", cursor: "pointer", fontWeight: "bold" },
-  categoryBar: { position: "sticky", zIndex: 999, background: "#fff", display: "flex", justifyContent: "center", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #f1f5f9", overflowX: "auto" },
+  categoryBar: { position: "sticky", top: 80, zIndex: 999, background: "#fff", display: "flex", justifyContent: "center", alignItems: "center", padding: "10px 16px", gap: 20, borderBottom: "1px solid #f1f5f9", overflowX: "auto" },
   categoryLeft: { display: "flex", gap: 10 },
-  categoryBtn: { border: "1px solid #e2e8f0", padding: "8px 16px", borderRadius: "20px", cursor: "pointer", fontSize: "11px", fontWeight: "bold", whiteSpace: "nowrap" },
-  categoryRight: { marginLeft: "15px" },
+  categoryBtn: { border: "1px solid #e2e8f0", padding: "8px 16px", borderRadius: "20px", cursor: "pointer", fontSize: "11px", fontWeight: "bold", whiteSpace: "nowrap", transition: "0.2s" },
+  categoryRight: { position: "absolute", right: 16 },
   instaIcon: { width: 26, height: 26 },
-  stripBanner: { position: "sticky", height: 44, zIndex: 998, background: "#2ecc71", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "14px", fontWeight: "500" },
-  carouselFixed: { width: "100%", background: "#fff", padding: "15px 0", borderBottom: "1px solid #f1f5f9" },
+  stripBanner: { position: "sticky", top: 128, height: 44, zIndex: 998, background: "#2ecc71", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "14px", fontWeight: "500" },
+  carouselFixed: { position: "sticky", top: 172, width: "100%", background: "#fff", padding: "15px 0", zIndex: 997, borderBottom: "1px solid #f1f5f9" },
   title: { textAlign: "center", fontSize: "18px", color: "#1e293b", marginBottom: 12, fontWeight: "800" },
   carouselWindow: { overflow: "hidden", width: "100%" },
   carouselTrack: { display: "flex", gap: 14, width: "max-content" },
   cardCar: { width: 150, textAlign: "center", cursor: "pointer" },
   imgCar: { width: "100%", height: 110, objectFit: "cover", borderRadius: "12px" },
   nameCar: { marginTop: 6, fontSize: "12px", color: "#475569", fontWeight: "500" },
-  grid: { display: "grid", gap: "20px", padding: "20px" },
-  card: { background: "#fff", borderRadius: "16px", overflow: "hidden", boxShadow: "0 4px 15px rgba(0,0,0,0.05)", cursor: "pointer", display: "flex", flexDirection: "column" },
-  imgWrapper: { position: "relative", width: "100%", height: 200 },
+  grid: { marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: "20px", padding: "20px" },
+  card: { background: "#fff", borderRadius: "16px", overflow: "hidden", boxShadow: "0 4px 15px rgba(0,0,0,0.05)", cursor: "pointer", transition: "0.3s", display: "flex", flexDirection: "column" },
+  imgWrapper: { position: "relative", width: "100%", height: 180 },
   bestSellerBadge: { position: "absolute", top: 10, left: 10, background: "#f1c40f", color: "#000", fontSize: "9px", fontWeight: "bold", padding: "4px 8px", borderRadius: "4px", zIndex: 5 },
   img: { width: "100%", height: "100%", objectFit: "cover" },
-  info: { padding: "15px", textAlign: "center", flex: 1 },
+  info: { padding: "15px", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" },
   productName: { fontSize: "14px", color: "#334155", marginBottom: "8px", fontWeight: "600" },
-  priceContainer: { marginBottom: "12px" },
+  priceContainer: { marginBottom: "12px", display: 'flex', flexDirection: 'column', alignItems: 'center' },
   priceLabel: { fontSize: "12px", color: "#94a3b8" },
   priceValue: { fontSize: "20px", color: "#2ecc71", fontWeight: "800" },
-  viewBtn: { background: "#f1f5f9", color: "#64748b", border: "none", padding: "8px", borderRadius: "8px", fontSize: "12px", fontWeight: "bold", width: "100%" }
+  viewBtn: { background: "#f1f5f9", color: "#64748b", border: "none", padding: "8px", borderRadius: "8px", fontSize: "12px", fontWeight: "bold", width: "100%", cursor: "pointer" }
 };
