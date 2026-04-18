@@ -6,13 +6,13 @@ import { collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } fro
 import { useRouter } from "next/navigation";
 
 // --- DEFINIÇÃO DE TIPOS (Interfaces) ---
-// Isso resolve o erro de "never[]" e protege seu código contra dados ausentes
 interface ItemPedido {
   nome: string;
   qty: number;
   variacao?: string;
 }
 
+// Interface atualizada com o campo de Endereço
 interface Pedido {
   id: string;
   cliente: string;
@@ -21,6 +21,13 @@ interface Pedido {
   pago: boolean;
   data: string;
   itens: ItemPedido[];
+  endereco?: {
+    rua: string;
+    numero: string;
+    bairro: string;
+    cidade: string;
+    uf: string;
+  };
   financeiro?: {
     total: number;
   };
@@ -35,8 +42,6 @@ export default function AdminPedidos() {
   
   const [isLogged, setIsLogged] = useState(false);
   const [password, setPassword] = useState("");
-  
-  // Estado tipado corretamente para aceitar a lista de pedidos do Firebase
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
@@ -99,7 +104,8 @@ export default function AdminPedidos() {
 
   const pedidosFiltrados = pedidos.filter(p => 
     p.cliente?.toLowerCase().includes(busca.toLowerCase()) || 
-    p.numeroPedido?.toString().includes(busca)
+    p.numeroPedido?.toString().includes(busca) ||
+    p.endereco?.bairro?.toLowerCase().includes(busca.toLowerCase())
   );
 
   if (!isLogged) {
@@ -158,7 +164,7 @@ export default function AdminPedidos() {
       <div style={styles.searchBar}>
         <input 
           type="text" 
-          placeholder="🔍 Buscar por cliente ou nº do pedido..." 
+          placeholder="🔍 Buscar por cliente, Nº ou bairro..." 
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           style={styles.searchInput}
@@ -171,7 +177,7 @@ export default function AdminPedidos() {
             <tr>
               <th style={styles.th}>Nº</th>
               <th style={styles.th}>Data</th>
-              <th style={styles.th}>Cliente</th>
+              <th style={styles.th}>Cliente / Endereço</th>
               <th style={thStyleProdutos}>Produtos / Personalização</th>
               <th style={styles.th}>Total</th>
               <th style={styles.th}>Ações</th>
@@ -185,7 +191,18 @@ export default function AdminPedidos() {
               }}>
                 <td style={styles.tdBold}>#{pedido.numeroPedido}</td>
                 <td style={styles.td}>{pedido.data}</td>
-                <td style={styles.td}>{pedido.cliente}</td>
+                <td style={styles.td}>
+                  <div style={{fontWeight: 'bold'}}>{pedido.cliente}</div>
+                  {pedido.endereco ? (
+                    <div style={styles.enderecoText}>
+                      📍 {pedido.endereco.rua}, {pedido.endereco.numero}<br/>
+                      🏘️ {pedido.endereco.bairro}<br/>
+                      🏙️ {pedido.endereco.cidade}-{pedido.endereco.uf}
+                    </div>
+                  ) : (
+                    <div style={{color: '#999', fontSize: '11px'}}>Endereço não registrado</div>
+                  )}
+                </td>
                 <td style={styles.td}>
                   {pedido.itens?.map((item, idx) => (
                     <div key={idx} style={styles.itemContainer}>
@@ -203,7 +220,6 @@ export default function AdminPedidos() {
                     </div>
                   ))}
 
-                  {/* Renderização segura da personalização */}
                   {pedido.personalizacao && typeof pedido.personalizacao === 'object' && (
                     <div style={styles.personalizacaoBox}>
                       <div style={styles.personalizacaoTitle}>🎁 PERSONALIZAÇÃO:</div>
@@ -254,12 +270,11 @@ export default function AdminPedidos() {
   );
 }
 
-// Estilo auxiliar para a coluna de produtos
 const thStyleProdutos: React.CSSProperties = {
-    padding: "15px", 
-    fontSize: "12px", 
-    textTransform: "uppercase",
-    minWidth: "200px"
+  padding: "15px", 
+  fontSize: "12px", 
+  textTransform: "uppercase",
+  minWidth: "200px"
 };
 
 const styles: { [key: string]: React.CSSProperties } = {
@@ -277,14 +292,15 @@ const styles: { [key: string]: React.CSSProperties } = {
   statLabel: { fontSize: "12px", color: "#64748b", fontWeight: "bold" },
   searchBar: { marginBottom: "20px" },
   searchInput: { width: "100%", maxWidth: "400px", padding: "12px 20px", borderRadius: "25px", border: "1px solid #cbd5e1", outline: "none", fontSize: "14px", boxSizing: "border-box" },
-  tableContainer: { background: "#fff", borderRadius: "12px", overflowX: "auto", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", WebkitOverflowScrolling: "touch" },
-  table: { width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: "800px" }, 
+  tableContainer: { background: "#fff", borderRadius: "12px", overflowX: "auto", boxShadow: "0 4px 20px rgba(0,0,0,0.08)" },
+  table: { width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: "1000px" }, 
   thead: { background: "#2c3e50", color: "#fff" },
   th: { padding: "15px", fontSize: "12px", textTransform: "uppercase" },
   tr: { borderBottom: "1px solid #eee" },
-  td: { padding: "15px", fontSize: "14px", color: "#444" },
+  td: { padding: "15px", fontSize: "14px", color: "#444", verticalAlign: 'top' },
   tdBold: { padding: "15px", fontWeight: "bold", color: "#2c3e50" },
   tdTotal: { padding: "15px", fontWeight: "bold", color: "#2ecc71" },
+  enderecoText: { fontSize: '12px', color: '#666', marginTop: '5px', lineHeight: '1.4' },
   itemContainer: { marginBottom: "8px" },
   itemLine: { fontSize: "13px" },
   badgeVariacao: { display: "inline-block", fontSize: "10px", fontWeight: "bold", padding: "2px 8px", borderRadius: "10px", marginTop: "4px" },

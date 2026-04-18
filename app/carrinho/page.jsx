@@ -12,22 +12,29 @@ export default function Carrinho() {
 
   const [frete, setFrete] = useState(0);
   const [chavePix, setChavePix] = useState("");
-  const [lojaAberta, setLojaAberta] = useState(true); // NOVO: Estado da loja
+  const [lojaAberta, setLojaAberta] = useState(true);
   const [nomeCliente, setNomeCliente] = useState("");
   const [nomePersonalizado, setNomePersonalizado] = useState("");
   const [idade, setIdade] = useState("");
+  
+  // NOVOS ESTADOS PARA ENDEREÇO
+  const [rua, setRua] = useState("");
+  const [numero, setNumero] = useState("");
+  const [bairro, setBairro] = useState("");
+  const [cidade] = useState("São José dos Campos");
+  const [uf] = useState("SP");
+
   const [erro, setErro] = useState("");
 
   const whatsapp = "5512981654900"; 
 
   useEffect(() => {
-    // Escuta em tempo real o documento de configuração
     const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
       if (snap.exists()) {
         const dados = snap.data();
         setFrete(Number(dados.frete) || 0);
         setChavePix(dados.chavePix || "Sua Chave Aqui");
-        setLojaAberta(dados.lojaAberta ?? true); // Captura o status da loja
+        setLojaAberta(dados.lojaAberta ?? true);
       }
     });
     return () => unsub();
@@ -37,7 +44,6 @@ export default function Carrinho() {
   const freteReais = frete / 100; 
   const totalGeral = subtotal + freteReais;
 
-  // Gerador de Payload PIX
   const pixPayload = (() => {
     if (!chavePix) return "";
     const v = totalGeral.toFixed(2);
@@ -67,6 +73,13 @@ export default function Carrinho() {
     if (!lojaAberta) { setErro("🔴 Loja em recesso. Pedidos desativados."); return false; }
     if (cart.length === 0) { setErro("⚠️ Carrinho vazio"); return false; }
     if (!nomeCliente.trim()) { setErro("⚠️ Preencha o NOME DO CLIENTE"); return false; }
+    
+    // VALIDAÇÃO DE ENDEREÇO
+    if (!rua.trim() || !numero.trim() || !bairro.trim()) { 
+      setErro("⚠️ Preencha os dados de ENDEREÇO (Rua, Nº e Bairro)"); 
+      return false; 
+    }
+
     if (isKitFesta) {
       if (!nomePersonalizado.trim()) { setErro("⚠️ Preencha o NOME para personalização"); return false; }
       if (!idade.trim()) { setErro("⚠️ Preencha a IDADE"); return false; }
@@ -86,6 +99,7 @@ export default function Carrinho() {
       await addDoc(collection(db, "registros_pedidos"), {
         numeroPedido,
         cliente: nomeCliente,
+        endereco: { rua, numero, bairro, cidade, uf },
         data: new Date().toLocaleString("pt-BR"),
         itens: cart.map(item => ({ nome: item.nome, qty: item.qty, preco: item.preco, variacao: item.variacao })),
         financeiro: { subtotal, frete: freteReais, total: totalGeral },
@@ -93,14 +107,14 @@ export default function Carrinho() {
         status: "Pendente"
       });
 
-      let msg = `🛒 *PEDIDO Nº ${numeroPedido}*%0A%0A👤 Cliente: ${nomeCliente}%0A`;
+      let msg = `🛒 *PEDIDO Nº ${numeroPedido}*%0A%0A👤 Cliente: ${nomeCliente}%0A📍 Endereço: ${rua}, ${numero} - ${bairro}%0A🏙️ ${cidade}-${uf}%0A`;
       if (isKitFesta) msg += `🎁 Personalização: ${nomePersonalizado}%0A🎉 Idade: ${idade}%0A`;
       msg += `%0A📦 *Itens:*%0A`;
       cart.forEach(item => { 
         const precoFormatado = String(item.preco).replace(".", ",");
         msg += `- ${item.nome} (${item.variacao || 'Padrão'}) x${item.qty} = R$ ${precoFormatado}%0A`; 
       });
-      msg += `%0A🚚 Frete: R$ ${freteReais.toFixed(2).replace(".", ",")}%0A💰 *Total: R$ ${totalGeral.toFixed(2).replace(".", ",")}*%0A%0A📎 Envie o comprovante agora.`;
+      msg += `%0A🚚 Frete: R$ ${freteReais.toFixed(2).replace(".", ",")}%0A💰 *Total: R$ ${totalGeral.toFixed(2).replace(".", ",")}*%0A%0A📎 *ENVIANDO COMPROVANTE DO PIX...*`;
       
       window.open(`https://wa.me/${whatsapp}?text=${msg}`, "_blank");
       
@@ -113,6 +127,11 @@ export default function Carrinho() {
     <div style={styles.page}>
       <h1>🛒 Carrinho</h1>
       <button onClick={() => router.push("/")} style={styles.continueBtn}>← Continuar comprando</button>
+
+      {/* AVISO DE FRETE CHAMATIVO */}
+      <div style={styles.freteWarning}>
+        📢 <strong>IMPORTANTE:</strong> O frete cobrado é válido apenas para a cidade de <strong>São José dos Campos-SP</strong>.
+      </div>
 
       <div style={styles.container}>
         <div style={styles.left}>
@@ -130,36 +149,47 @@ export default function Carrinho() {
           ))}
 
           <h2>Subtotal: R$ {subtotal.toFixed(2).replace(".", ",")}</h2>
-          <div style={styles.freteBox}>🚚 Frete: R$ {freteReais.toFixed(2).replace(".", ",")}</div>
+          <div style={styles.freteBox}>🚚 Frete (SJC): R$ {freteReais.toFixed(2).replace(".", ",")}</div>
           <h2 style={{ color: "#2ecc71" }}>Total: R$ {totalGeral.toFixed(2).replace(".", ",")}</h2>
 
           {erro && <div style={styles.errorBox}>{erro}</div>}
           
-          {/* TRAVA DE INPUTS SE LOJA FECHADA */}
-          <input 
-            disabled={!lojaAberta}
-            placeholder={lojaAberta ? "Nome do cliente *" : "Loja em recesso - Indisponível"} 
-            value={nomeCliente} 
-            onChange={(e) => setNomeCliente(e.target.value)} 
-            style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} 
-          />
+          <div style={{marginTop: 20}}>
+            <h3 style={{fontSize: '16px', marginBottom: '10px'}}>📍 Dados de Entrega</h3>
+            <input 
+              disabled={!lojaAberta}
+              placeholder="Nome do cliente *" 
+              value={nomeCliente} 
+              onChange={(e) => setNomeCliente(e.target.value)} 
+              style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} 
+            />
+            <div style={{display: 'flex', gap: 10}}>
+                <input disabled={!lojaAberta} placeholder="Rua / Avenida *" value={rua} onChange={(e) => setRua(e.target.value)} style={{...styles.input, flex: 3}} />
+                <input disabled={!lojaAberta} placeholder="Nº *" value={numero} onChange={(e) => setNumero(e.target.value)} style={{...styles.input, flex: 1}} />
+            </div>
+            <input disabled={!lojaAberta} placeholder="Bairro *" value={bairro} onChange={(e) => setBairro(e.target.value)} style={styles.input} />
+            <div style={{display: 'flex', gap: 10}}>
+                <input disabled placeholder="Cidade" value={cidade} style={{...styles.input, background: '#eee', flex: 3}} />
+                <input disabled placeholder="UF" value={uf} style={{...styles.input, background: '#eee', flex: 1}} />
+            </div>
+          </div>
 
           {isKitFesta && (
-            <>
-              <div style={styles.alert}>⚠️ Produtos personalizados exigem dados obrigatórios</div>
+            <div style={{marginTop: 20}}>
+              <div style={styles.alert}>⚠️ Dados de Personalização Obrigatórios</div>
               <input disabled={!lojaAberta} placeholder="Nome para personalização *" value={nomePersonalizado} onChange={(e) => setNomePersonalizado(e.target.value)} style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} />
               <input disabled={!lojaAberta} placeholder="Idade *" value={idade} onChange={(e) => setIdade(e.target.value.replace(/\D/g, ""))} style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} />
-            </>
+            </div>
           )}
         </div>
 
         <div style={styles.right}>
-          <h3>💳 Pix</h3>
+          <h3>💳 Pagamento PIX</h3>
+          <p style={{fontSize: '11px', color: '#666', marginBottom: 10}}>Pague agora para liberar o botão</p>
           <img key={totalGeral + chavePix} src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(pixPayload)}`} style={styles.qr} alt="Pix" />
           <div style={styles.pixKey}>{chavePix}</div>
           <button style={styles.copyBtn} onClick={() => { navigator.clipboard.writeText(pixPayload); alert("Código PIX Copiado!"); }}>Copiar código Pix</button>
           
-          {/* BOTÃO COM LÓGICA DE TRAVA */}
           <button 
             onClick={enviar} 
             disabled={!lojaAberta} 
@@ -169,13 +199,13 @@ export default function Carrinho() {
               cursor: lojaAberta ? "pointer" : "not-allowed"
             }}
           >
-            {lojaAberta ? "Confirmar no WhatsApp" : "Loja em Recesso"}
+            {lojaAberta ? "Confirmar e Enviar Comprovante" : "Loja em Recesso"}
           </button>
           
           <div style={styles.notice}>
             {lojaAberta 
-              ? "⚠️ Após o pagamento, envie o comprovante no WhatsApp para agilizarmos seu pedido."
-              : "🚩 Estamos em recesso no momento. Não é possível processar pedidos."
+              ? "✅ O endereço e o pedido serão enviados automaticamente no chat após clicar no botão acima."
+              : "🚩 Estamos em recesso no momento."
             }
           </div>
         </div>
@@ -186,21 +216,22 @@ export default function Carrinho() {
 
 const styles = {
   page: { padding: 20, background: "#f5f7fb", minHeight: "100vh", fontFamily: "sans-serif" },
+  freteWarning: { background: "#ff7675", color: "#fff", padding: "12px", borderRadius: "10px", marginBottom: "20px", textAlign: "center", fontSize: "14px", fontWeight: "bold", boxShadow: "0 4px 10px rgba(0,0,0,0.1)" },
   container: { display: "flex", gap: 20, flexWrap: "wrap" },
   left: { flex: 2, minWidth: 300 },
-  right: { flex: 1, minWidth: 220, background: "#fff", padding: 15, borderRadius: 12, textAlign: "center", boxShadow: "0 5px 15px rgba(0,0,0,0.08)" },
+  right: { flex: 1, minWidth: 260, background: "#fff", padding: 20, borderRadius: 12, textAlign: "center", boxShadow: "0 5px 15px rgba(0,0,0,0.08)", position: 'sticky', top: 20, height: 'fit-content' },
   item: { background: "#fff", padding: 10, borderRadius: 10, marginBottom: 10 },
   qtyBox: { display: "flex", gap: 8, alignItems: "center", marginTop: 8 },
   qtyBtn: { width: 28, height: 28, background: "#2ecc71", border: "none", color: "#fff", borderRadius: 6, cursor: "pointer" },
   removeBtn: { marginLeft: 10, background: "#e74c3c", color: "#fff", border: "none", padding: "4px 8px", borderRadius: 6, cursor: "pointer" },
   freteBox: { marginTop: 10, padding: 10, background: "#ecf0f1", borderRadius: 8, fontWeight: "bold" },
-  input: { width: "100%", padding: 10, marginTop: 8, borderRadius: 8, border: "1px solid #ddd" },
+  input: { width: "100%", padding: 12, marginTop: 8, borderRadius: 8, border: "1px solid #ddd", fontSize: "14px", boxSizing: "border-box" },
   alert: { marginTop: 10, background: "#f31212", color: "#fff", padding: 10, borderRadius: 10, fontSize: 12 },
-  errorBox: { marginTop: 10, background: "#e74c3c", color: "#fff", padding: 10, borderRadius: 10, fontWeight: "bold" },
-  qr: { width: 140, height: 140, margin: "10px auto" },
-  pixKey: { fontSize: 12, background: "#f1f1f1", padding: 8, borderRadius: 8, wordBreak: "break-word" },
-  copyBtn: { width: "100%", marginTop: 10, padding: 10, background: "#3498db", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" },
-  whatsBtn: { width: "100%", marginTop: 10, padding: 15, color: "#fff", border: "none", borderRadius: 8, fontWeight: "bold", transition: "0.3s" },
+  errorBox: { marginTop: 10, background: "#e74c3c", color: "#fff", padding: 10, borderRadius: 10, fontWeight: "bold", marginBottom: 15 },
+  qr: { width: 160, height: 160, margin: "10px auto" },
+  pixKey: { fontSize: 12, background: "#f1f1f1", padding: 8, borderRadius: 8, wordBreak: "break-word", marginBottom: 10 },
+  copyBtn: { width: "100%", marginBottom: 10, padding: 10, background: "#3498db", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 'bold' },
+  whatsBtn: { width: "100%", marginTop: 10, padding: 18, color: "#fff", border: "none", borderRadius: 10, fontWeight: "bold", fontSize: "15px", transition: "0.3s", boxShadow: "0 4px 12px rgba(37, 211, 102, 0.3)" },
   continueBtn: { marginBottom: 15, background: "#3498db", color: "#fff", border: "none", padding: 10, borderRadius: 8, cursor: "pointer" },
-  notice: { marginTop: 12, background: "#ffeaa7", padding: 10, borderRadius: 10, fontSize: 12 }
+  notice: { marginTop: 15, background: "#ffeaa7", padding: 12, borderRadius: 10, fontSize: 12, color: '#d63031', fontWeight: '500' }
 };
