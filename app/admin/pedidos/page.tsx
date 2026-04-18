@@ -5,19 +5,44 @@ import { db } from "@/lib/firebase";
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 
+// --- DEFINIÇÃO DE TIPOS (Interfaces) ---
+// Isso resolve o erro de "never[]" e protege seu código contra dados ausentes
+interface ItemPedido {
+  nome: string;
+  qty: number;
+  variacao?: string;
+}
+
+interface Pedido {
+  id: string;
+  cliente: string;
+  numeroPedido: number;
+  status: string;
+  pago: boolean;
+  data: string;
+  itens: ItemPedido[];
+  financeiro?: {
+    total: number;
+  };
+  personalizacao?: {
+    nome?: string;
+    idade?: string | number;
+  } | string;
+}
+
 export default function AdminPedidos() {
   const router = useRouter();
   
   const [isLogged, setIsLogged] = useState(false);
   const [password, setPassword] = useState("");
   
-  // CORREÇÃO AQUI: Inicializado como array vazio tipado implicitamente para evitar erro no build da Vercel
-  const [pedidos, setPedidos] = useState([]);
+  // Estado tipado corretamente para aceitar a lista de pedidos do Firebase
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
 
   function handleLogin() {
-    const SENHA_MESTRE = "1234"; // Dica: mude isso antes de divulgar o link real!
+    const SENHA_MESTRE = "1234"; 
     if (password === SENHA_MESTRE) {
       setIsLogged(true);
     } else {
@@ -33,14 +58,15 @@ export default function AdminPedidos() {
       const lista = snap.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      }));
+      })) as Pedido[]; 
+      
       setPedidos(lista);
       setLoading(false);
     });
     return () => unsub();
   }, [isLogged]);
 
-  async function confirmarPagamento(id, pagoAtual) {
+  async function confirmarPagamento(id: string, pagoAtual: boolean) {
     try {
       const pedidoRef = doc(db, "registros_pedidos", id);
       await updateDoc(pedidoRef, { pago: !pagoAtual });
@@ -49,8 +75,8 @@ export default function AdminPedidos() {
     }
   }
 
-  async function alterarStatus(id, statusAtual) {
-    const proximosStatus = {
+  async function alterarStatus(id: string, statusAtual: string) {
+    const proximosStatus: Record<string, string> = {
       "Pendente": "Em Produção",
       "Em Produção": "Concluído",
       "Concluído": "Pendente"
@@ -65,7 +91,7 @@ export default function AdminPedidos() {
     }
   }
 
-  async function apagarPedido(id) {
+  async function apagarPedido(id: string) {
     if (confirm("Deseja eliminar este registro permanentemente?")) {
       await deleteDoc(doc(db, "registros_pedidos", id));
     }
@@ -116,13 +142,13 @@ export default function AdminPedidos() {
           </h2>
         </div>
         <div style={styles.statCard}>
-          <span style={styles.statLabel}>Faturamento</span>
+          <span style={styles.statLabel}>Faturamento Total</span>
           <h2 style={{ margin: '5px 0' }}>
             R$ {pedidos.reduce((acc, p) => acc + (p.financeiro?.total || 0), 0).toFixed(2).replace(".", ",")}
           </h2>
         </div>
         <div style={styles.statCard}>
-          <span style={styles.statLabel}>💰 Recebido</span>
+          <span style={styles.statLabel}>💰 Total Recebido</span>
           <h2 style={{ color: "#2ecc71", margin: '5px 0' }}>
             R$ {pedidos.filter(p => p.pago).reduce((acc, p) => acc + (p.financeiro?.total || 0), 0).toFixed(2).replace(".", ",")}
           </h2>
@@ -146,7 +172,7 @@ export default function AdminPedidos() {
               <th style={styles.th}>Nº</th>
               <th style={styles.th}>Data</th>
               <th style={styles.th}>Cliente</th>
-              <th style={styles.th}>Produtos</th>
+              <th style={thStyleProdutos}>Produtos / Personalização</th>
               <th style={styles.th}>Total</th>
               <th style={styles.th}>Ações</th>
             </tr>
@@ -177,18 +203,19 @@ export default function AdminPedidos() {
                     </div>
                   ))}
 
-                  {pedido.personalizacao && pedido.personalizacao !== "N/A" && (
+                  {/* Renderização segura da personalização */}
+                  {pedido.personalizacao && typeof pedido.personalizacao === 'object' && (
                     <div style={styles.personalizacaoBox}>
                       <div style={styles.personalizacaoTitle}>🎁 PERSONALIZAÇÃO:</div>
                       <div style={styles.personalizacaoText}>
-                        <strong>Nome:</strong> {pedido.personalizacao.nome} <br/>
-                        <strong>Idade:</strong> {pedido.personalizacao.idade} anos
+                        <strong>Nome:</strong> {pedido.personalizacao.nome || "Não informado"} <br/>
+                        <strong>Idade:</strong> {pedido.personalizacao.idade || "N/A"}
                       </div>
                     </div>
                   )}
                 </td>
                 <td style={styles.tdTotal}>
-                  R$ {pedido.financeiro?.total.toFixed(2).replace(".", ",")}
+                  R$ {(pedido.financeiro?.total || 0).toFixed(2).replace(".", ",")}
                 </td>
                 <td style={styles.td}>
                   <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -222,15 +249,20 @@ export default function AdminPedidos() {
             ))}
           </tbody>
         </table>
-        {pedidosFiltrados.length === 0 && (
-          <div style={{padding: '30px', textAlign: 'center', color: '#64748b'}}>Nenhum pedido encontrado.</div>
-        )}
       </div>
     </div>
   );
 }
 
-const styles = {
+// Estilo auxiliar para a coluna de produtos
+const thStyleProdutos: React.CSSProperties = {
+    padding: "15px", 
+    fontSize: "12px", 
+    textTransform: "uppercase",
+    minWidth: "200px"
+};
+
+const styles: { [key: string]: React.CSSProperties } = {
   loginOverlay: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", background: "#f0f2f5" },
   loginBox: { background: "#fff", padding: "40px", borderRadius: "16px", boxShadow: "0 10px 25px rgba(0,0,0,0.1)", textAlign: "center", width: "90%", maxWidth: "320px" },
   inputLogin: { width: "100%", padding: "12px", marginBottom: "15px", borderRadius: "8px", border: "1px solid #ddd", boxSizing: "border-box" },
@@ -246,7 +278,7 @@ const styles = {
   searchBar: { marginBottom: "20px" },
   searchInput: { width: "100%", maxWidth: "400px", padding: "12px 20px", borderRadius: "25px", border: "1px solid #cbd5e1", outline: "none", fontSize: "14px", boxSizing: "border-box" },
   tableContainer: { background: "#fff", borderRadius: "12px", overflowX: "auto", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", WebkitOverflowScrolling: "touch" },
-  table: { width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: "800px" }, // Força scroll lateral se a tela for menor que 800px
+  table: { width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: "800px" }, 
   thead: { background: "#2c3e50", color: "#fff" },
   th: { padding: "15px", fontSize: "12px", textTransform: "uppercase" },
   tr: { borderBottom: "1px solid #eee" },
