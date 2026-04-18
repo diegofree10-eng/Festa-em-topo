@@ -4,370 +4,203 @@ import { useCart } from "@/app/context/CartContext";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, increment, getDoc, addDoc, collection } from "firebase/firestore";
 
 export default function Carrinho() {
-  const { cart, addToCart, decrease, removeFromCart } = useCart();
+  const { cart, addToCart, decrease, removeFromCart, totalCarrinho, clearCart } = useCart();
   const router = useRouter();
 
   const [frete, setFrete] = useState(0);
-
+  const [chavePix, setChavePix] = useState("");
+  const [lojaAberta, setLojaAberta] = useState(true); // NOVO: Estado da loja
   const [nomeCliente, setNomeCliente] = useState("");
   const [nomePersonalizado, setNomePersonalizado] = useState("");
   const [idade, setIdade] = useState("");
   const [erro, setErro] = useState("");
 
-  const chavePix = "58e6d787-d9ac-4e02-b7d3-2bb11aabb542";
-  const whatsapp = "5511999999999";
+  const whatsapp = "5512981654900"; 
 
-  // 🚚 FRETE EM TEMPO REAL (AGORA FUNCIONA DE VERDADE)
   useEffect(() => {
-    const ref = doc(db, "config", "loja");
-
-    const unsub = onSnapshot(ref, (snap) => {
+    // Escuta em tempo real o documento de configuração
+    const unsub = onSnapshot(doc(db, "config", "loja"), (snap) => {
       if (snap.exists()) {
-        setFrete(Number(snap.data().frete || 0));
+        const dados = snap.data();
+        setFrete(Number(dados.frete) || 0);
+        setChavePix(dados.chavePix || "Sua Chave Aqui");
+        setLojaAberta(dados.lojaAberta ?? true); // Captura o status da loja
       }
     });
-
     return () => unsub();
   }, []);
 
-  // 🔎 detecta kit festa
+  const subtotal = totalCarrinho;
+  const freteReais = frete / 100; 
+  const totalGeral = subtotal + freteReais;
+
+  // Gerador de Payload PIX
+  const pixPayload = (() => {
+    if (!chavePix) return "";
+    const v = totalGeral.toFixed(2);
+    const f = (id, val) => id + String(val.length).padStart(2, "0") + val;
+    let payload = f("00", "01") + f("26", f("00", "br.gov.bcb.pix") + f("01", chavePix)) + 
+                  f("52", "0000") + f("53", "986") + f("54", v) + f("58", "BR") + 
+                  f("59", "LOJA") + f("60", "CIDADE") + f("62", f("05", "***")) + "6304"; 
+
+    const crc16 = (s) => {
+      let c = 0xFFFF;
+      for (let i = 0; i < s.length; i++) {
+        c ^= s.charCodeAt(i) << 8;
+        for (let j = 0; j < 8; j++) {
+          if ((c & 0x8000) !== 0) c = (c << 1) ^ 0x1021; else c <<= 1;
+        }
+      }
+      return (c & 0xFFFF).toString(16).toUpperCase().padStart(4, "0");
+    };
+    return payload + crc16(payload);
+  })();
+
   const isKitFesta = cart.some((item) =>
-    item.nome.toLowerCase().includes("kit festa")
+    (item.nome || "").toLowerCase().includes("kit festa")
   );
 
-  // 💰 subtotal
-  const subtotal = cart.reduce((sum, item) => {
-    const preco = Number(item.preco.replace(",", "."));
-    return sum + preco * item.qty;
-  }, 0);
-
-  const total = subtotal + frete;
-
-  // ✅ validação
   function validar() {
-    if (!nomeCliente.trim()) {
-      setErro("⚠️ Preencha o NOME DO CLIENTE");
-      return false;
-    }
-
+    if (!lojaAberta) { setErro("🔴 Loja em recesso. Pedidos desativados."); return false; }
+    if (cart.length === 0) { setErro("⚠️ Carrinho vazio"); return false; }
+    if (!nomeCliente.trim()) { setErro("⚠️ Preencha o NOME DO CLIENTE"); return false; }
     if (isKitFesta) {
-      if (!nomePersonalizado.trim()) {
-        setErro("⚠️ Preencha o NOME para personalização");
-        return false;
-      }
-
-      if (!idade.trim()) {
-        setErro("⚠️ Preencha a IDADE");
-        return false;
-      }
+      if (!nomePersonalizado.trim()) { setErro("⚠️ Preencha o NOME para personalização"); return false; }
+      if (!idade.trim()) { setErro("⚠️ Preencha a IDADE"); return false; }
     }
-
     setErro("");
     return true;
   }
 
-  // 📲 mensagem WhatsApp
-  function gerarMensagem() {
-    let msg = `🛒 *NOVO PEDIDO*%0A%0A`;
-
-    msg += `👤 Cliente: ${nomeCliente}%0A`;
-
-    if (isKitFesta) {
-      msg += `🎁 Personalização: ${nomePersonalizado}%0A`;
-      msg += `🎉 Idade: ${idade}%0A`;
-    }
-
-    msg += `%0A📦 *Itens:*%0A`;
-
-    cart.forEach((item) => {
-      msg += `- ${item.nome} x${item.qty} = R$ ${item.preco}%0A`;
-    });
-
-    msg += `%0A🚚 Frete: R$ ${frete.toFixed(2)}%0A`;
-    msg += `💰 Total: R$ ${total.toFixed(2)}%0A`;
-
-    msg += `%0A📎 Envie o comprovante de pagamento`;
-
-    return msg;
-  }
-
-  function enviar() {
+  async function enviar() {
     if (!validar()) return;
+    try {
+      const pedidosRef = doc(db, "config", "pedidos");
+      await updateDoc(pedidosRef, { contador: increment(1) });
+      const snap = await getDoc(pedidosRef);
+      const numeroPedido = snap.data()?.contador || 0;
 
-    window.open(
-      `https://wa.me/${whatsapp}?text=${gerarMensagem()}`,
-      "_blank"
-    );
+      await addDoc(collection(db, "registros_pedidos"), {
+        numeroPedido,
+        cliente: nomeCliente,
+        data: new Date().toLocaleString("pt-BR"),
+        itens: cart.map(item => ({ nome: item.nome, qty: item.qty, preco: item.preco, variacao: item.variacao })),
+        financeiro: { subtotal, frete: freteReais, total: totalGeral },
+        personalizacao: isKitFesta ? { nome: nomePersonalizado, idade } : "N/A",
+        status: "Pendente"
+      });
+
+      let msg = `🛒 *PEDIDO Nº ${numeroPedido}*%0A%0A👤 Cliente: ${nomeCliente}%0A`;
+      if (isKitFesta) msg += `🎁 Personalização: ${nomePersonalizado}%0A🎉 Idade: ${idade}%0A`;
+      msg += `%0A📦 *Itens:*%0A`;
+      cart.forEach(item => { 
+        const precoFormatado = String(item.preco).replace(".", ",");
+        msg += `- ${item.nome} (${item.variacao || 'Padrão'}) x${item.qty} = R$ ${precoFormatado}%0A`; 
+      });
+      msg += `%0A🚚 Frete: R$ ${freteReais.toFixed(2).replace(".", ",")}%0A💰 *Total: R$ ${totalGeral.toFixed(2).replace(".", ",")}*%0A%0A📎 Envie o comprovante agora.`;
+      
+      window.open(`https://wa.me/${whatsapp}?text=${msg}`, "_blank");
+      
+      clearCart();
+      router.push("/");
+    } catch (e) { setErro("⚠️ Erro ao processar o pedido."); }
   }
 
   return (
     <div style={styles.page}>
-
       <h1>🛒 Carrinho</h1>
-
-      <button onClick={() => router.push("/")} style={styles.continueBtn}>
-        ← Continuar comprando
-      </button>
+      <button onClick={() => router.push("/")} style={styles.continueBtn}>← Continuar comprando</button>
 
       <div style={styles.container}>
-
-        {/* ESQUERDA */}
         <div style={styles.left}>
-
           {cart.map((item, i) => (
-            <div key={i} style={styles.item}>
-
-              <h3>{item.nome}</h3>
-              <p>R$ {item.preco}</p>
-
+            <div key={item.id + (item.variacao || i)} style={styles.item}>
+              <h3>{item.nome} {item.variacao && <span style={{fontSize: '12px', color: '#666'}}>({item.variacao})</span>}</h3>
+              <p>R$ {String(item.preco).replace(".", ",")}</p>
               <div style={styles.qtyBox}>
-                <button onClick={() => decrease(item.id)} style={styles.qtyBtn}>-</button>
-                <span>{item.qty}</span>
+                <button onClick={() => decrease(item.id, item.variacao)} style={styles.qtyBtn}>-</button>
+                <span style={{ fontWeight: "bold", width: 20, textAlign: "center" }}>{item.qty}</span>
                 <button onClick={() => addToCart(item)} style={styles.qtyBtn}>+</button>
-
-                <button
-                  onClick={() => removeFromCart(item.id)}
-                  style={styles.removeBtn}
-                >
-                  remover
-                </button>
+                <button onClick={() => removeFromCart(item.id, item.variacao)} style={styles.removeBtn}>remover</button>
               </div>
-
             </div>
           ))}
 
-          <h2>Subtotal: R$ {subtotal.toFixed(2)}</h2>
-
-          <div style={styles.freteBox}>
-            🚚 Frete: R$ {frete.toFixed(2)}
-          </div>
-
-          <h2>Total: R$ {total.toFixed(2)}</h2>
+          <h2>Subtotal: R$ {subtotal.toFixed(2).replace(".", ",")}</h2>
+          <div style={styles.freteBox}>🚚 Frete: R$ {freteReais.toFixed(2).replace(".", ",")}</div>
+          <h2 style={{ color: "#2ecc71" }}>Total: R$ {totalGeral.toFixed(2).replace(".", ",")}</h2>
 
           {erro && <div style={styles.errorBox}>{erro}</div>}
-
-          <input
-            placeholder="Nome do cliente *"
-            value={nomeCliente}
-            onChange={(e) => setNomeCliente(e.target.value)}
-            style={styles.input}
+          
+          {/* TRAVA DE INPUTS SE LOJA FECHADA */}
+          <input 
+            disabled={!lojaAberta}
+            placeholder={lojaAberta ? "Nome do cliente *" : "Loja em recesso - Indisponível"} 
+            value={nomeCliente} 
+            onChange={(e) => setNomeCliente(e.target.value)} 
+            style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} 
           />
 
           {isKitFesta && (
             <>
-              <div style={styles.alert}>
-                ⚠️ Produtos personalizados exigem dados obrigatórios
-              </div>
-
-              <input
-                placeholder="Nome para personalização *"
-                value={nomePersonalizado}
-                onChange={(e) => setNomePersonalizado(e.target.value)}
-                style={styles.input}
-              />
-
-              <input
-                placeholder="Idade *"
-                value={idade}
-                onChange={(e) => setIdade(e.target.value.replace(/\D/g, ""))}
-                style={styles.input}
-              />
+              <div style={styles.alert}>⚠️ Produtos personalizados exigem dados obrigatórios</div>
+              <input disabled={!lojaAberta} placeholder="Nome para personalização *" value={nomePersonalizado} onChange={(e) => setNomePersonalizado(e.target.value)} style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} />
+              <input disabled={!lojaAberta} placeholder="Idade *" value={idade} onChange={(e) => setIdade(e.target.value.replace(/\D/g, ""))} style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} />
             </>
           )}
-
         </div>
 
-        {/* DIREITA PIX */}
         <div style={styles.right}>
-
           <h3>💳 Pix</h3>
-
-          <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${chavePix}`}
-            style={styles.qr}
-          />
-
+          <img key={totalGeral + chavePix} src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(pixPayload)}`} style={styles.qr} alt="Pix" />
           <div style={styles.pixKey}>{chavePix}</div>
-
-          <button
-            style={styles.copyBtn}
-            onClick={() => navigator.clipboard.writeText(chavePix)}
+          <button style={styles.copyBtn} onClick={() => { navigator.clipboard.writeText(pixPayload); alert("Código PIX Copiado!"); }}>Copiar código Pix</button>
+          
+          {/* BOTÃO COM LÓGICA DE TRAVA */}
+          <button 
+            onClick={enviar} 
+            disabled={!lojaAberta} 
+            style={{
+              ...styles.whatsBtn,
+              background: lojaAberta ? "#25D366" : "#94a3b8",
+              cursor: lojaAberta ? "pointer" : "not-allowed"
+            }}
           >
-            Copiar chave Pix
+            {lojaAberta ? "Confirmar no WhatsApp" : "Loja em Recesso"}
           </button>
-
-          <button onClick={enviar} style={styles.whatsBtn}>
-            Confirmar no WhatsApp
-          </button>
-
-          {/* 📢 AVISO IMPORTANTE */}
+          
           <div style={styles.notice}>
-            ⚠️ Após o pagamento, envie o comprovante + nome no WhatsApp.  
-            Sem o comprovante o pedido NÃO será processado.
+            {lojaAberta 
+              ? "⚠️ Após o pagamento, envie o comprovante no WhatsApp para agilizarmos seu pedido."
+              : "🚩 Estamos em recesso no momento. Não é possível processar pedidos."
+            }
           </div>
-
         </div>
-
       </div>
     </div>
   );
 }
 
-/* 🎨 ESTILOS */
 const styles = {
-  page: {
-    padding: 20,
-    background: "#f5f7fb",
-    minHeight: "100vh"
-  },
-
-  container: {
-    display: "flex",
-    gap: 20,
-    flexWrap: "wrap"
-  },
-
-  left: {
-    flex: 2,
-    minWidth: 300
-  },
-
-  right: {
-    flex: 1,
-    minWidth: 220,
-    background: "#fff",
-    padding: 15,
-    borderRadius: 12,
-    textAlign: "center",
-    boxShadow: "0 5px 15px rgba(0,0,0,0.08)"
-  },
-
-  item: {
-    background: "#fff",
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 10
-  },
-
-  qtyBox: {
-    display: "flex",
-    gap: 8,
-    alignItems: "center",
-    marginTop: 8
-  },
-
-  qtyBtn: {
-    width: 28,
-    height: 28,
-    background: "#2ecc71",
-    border: "none",
-    color: "#fff",
-    borderRadius: 6,
-    cursor: "pointer"
-  },
-
-  removeBtn: {
-    marginLeft: 10,
-    background: "#e74c3c",
-    color: "#fff",
-    border: "none",
-    padding: "4px 8px",
-    borderRadius: 6,
-    cursor: "pointer"
-  },
-
-  freteBox: {
-    marginTop: 10,
-    padding: 10,
-    background: "#ecf0f1",
-    borderRadius: 8,
-    fontWeight: "bold"
-  },
-
-  input: {
-    width: "100%",
-    padding: 10,
-    marginTop: 8,
-    borderRadius: 8,
-    border: "1px solid #ddd"
-  },
-
-  alert: {
-    marginTop: 10,
-    background: "#f31212",
-    color: "#fff",
-    padding: 10,
-    borderRadius: 10,
-    fontSize: 12,
-    fontWeight: "bold"
-  },
-
-  errorBox: {
-    marginTop: 10,
-    background: "#e74c3c",
-    color: "#fff",
-    padding: 10,
-    borderRadius: 10,
-    fontWeight: "bold"
-  },
-
-  qr: {
-    width: 140,
-    height: 140,
-    margin: "10px auto"
-  },
-
-  pixKey: {
-    fontSize: 12,
-    background: "#f1f1f1",
-    padding: 8,
-    borderRadius: 8,
-    wordBreak: "break-word"
-  },
-
-  copyBtn: {
-    width: "100%",
-    marginTop: 10,
-    padding: 10,
-    background: "#3498db",
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
-    cursor: "pointer"
-  },
-
-  whatsBtn: {
-    width: "100%",
-    marginTop: 10,
-    padding: 10,
-    background: "#25D366",
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
-    fontWeight: "bold",
-    cursor: "pointer"
-  },
-
-  continueBtn: {
-    marginBottom: 15,
-    background: "#3498db",
-    color: "#fff",
-    border: "none",
-    padding: 10,
-    borderRadius: 8,
-    cursor: "pointer"
-  },
-
-  notice: {
-    marginTop: 12,
-    background: "#ffeaa7",
-    color: "#2d3436",
-    padding: 10,
-    borderRadius: 10,
-    fontSize: 12,
-    fontWeight: "bold"
-  }
+  page: { padding: 20, background: "#f5f7fb", minHeight: "100vh", fontFamily: "sans-serif" },
+  container: { display: "flex", gap: 20, flexWrap: "wrap" },
+  left: { flex: 2, minWidth: 300 },
+  right: { flex: 1, minWidth: 220, background: "#fff", padding: 15, borderRadius: 12, textAlign: "center", boxShadow: "0 5px 15px rgba(0,0,0,0.08)" },
+  item: { background: "#fff", padding: 10, borderRadius: 10, marginBottom: 10 },
+  qtyBox: { display: "flex", gap: 8, alignItems: "center", marginTop: 8 },
+  qtyBtn: { width: 28, height: 28, background: "#2ecc71", border: "none", color: "#fff", borderRadius: 6, cursor: "pointer" },
+  removeBtn: { marginLeft: 10, background: "#e74c3c", color: "#fff", border: "none", padding: "4px 8px", borderRadius: 6, cursor: "pointer" },
+  freteBox: { marginTop: 10, padding: 10, background: "#ecf0f1", borderRadius: 8, fontWeight: "bold" },
+  input: { width: "100%", padding: 10, marginTop: 8, borderRadius: 8, border: "1px solid #ddd" },
+  alert: { marginTop: 10, background: "#f31212", color: "#fff", padding: 10, borderRadius: 10, fontSize: 12 },
+  errorBox: { marginTop: 10, background: "#e74c3c", color: "#fff", padding: 10, borderRadius: 10, fontWeight: "bold" },
+  qr: { width: 140, height: 140, margin: "10px auto" },
+  pixKey: { fontSize: 12, background: "#f1f1f1", padding: 8, borderRadius: 8, wordBreak: "break-word" },
+  copyBtn: { width: "100%", marginTop: 10, padding: 10, background: "#3498db", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" },
+  whatsBtn: { width: "100%", marginTop: 10, padding: 15, color: "#fff", border: "none", borderRadius: 8, fontWeight: "bold", transition: "0.3s" },
+  continueBtn: { marginBottom: 15, background: "#3498db", color: "#fff", border: "none", padding: 10, borderRadius: 8, cursor: "pointer" },
+  notice: { marginTop: 12, background: "#ffeaa7", padding: 10, borderRadius: 10, fontSize: 12 }
 };
