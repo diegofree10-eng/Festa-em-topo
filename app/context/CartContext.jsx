@@ -1,16 +1,32 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 
 const CartContext = createContext();
 
 export function CartProvider({ children }) {
+  // Inicializa o estado tentando buscar do localStorage para não perder dados no refresh
   const [cart, setCart] = useState([]);
 
-  // Adicionar ao carrinho
+  // Efeito para carregar o carrinho ao abrir a página
+  useEffect(() => {
+    const salvo = localStorage.getItem("festaemtopo_carrinho");
+    if (salvo) {
+      try {
+        setCart(JSON.parse(salvo));
+      } catch (e) {
+        console.error("Erro ao carregar carrinho");
+      }
+    }
+  }, []);
+
+  // Efeito para salvar no localStorage toda vez que o carrinho mudar
+  useEffect(() => {
+    localStorage.setItem("festaemtopo_carrinho", JSON.stringify(cart));
+  }, [cart]);
+
   function addToCart(product) {
     setCart((prev) => {
-      // Verifica se o produto com o MESMO ID e MESMA VARIAÇÃO já está no carrinho
       const exists = prev.find(
         (p) => p.id === product.id && p.variacao === product.variacao
       );
@@ -22,20 +38,16 @@ export function CartProvider({ children }) {
             : p
         );
       }
-
-      // Adiciona como novo item se não existir ou se a variação for diferente
       return [...prev, { ...product, qty: 1 }];
     });
   }
 
-  // Remover item completamente (considerando a variação)
   function removeFromCart(id, variacao = null) {
     setCart((prev) => 
       prev.filter((p) => !(p.id === id && p.variacao === variacao))
     );
   }
 
-  // Diminuir quantidade (considerando a variação)
   function decrease(id, variacao = null) {
     setCart((prev) =>
       prev.map((p) =>
@@ -46,26 +58,20 @@ export function CartProvider({ children }) {
     );
   }
 
-  // Limpar carrinho (Útil para após o envio do pedido no Whats)
   function clearCart() {
     setCart([]);
+    localStorage.removeItem("festaemtopo_carrinho");
   }
 
-  // CÁLCULO DO TOTAL
   const totalCarrinho = cart.reduce((acc, item) => {
-    // Tratamento de segurança para o preço
     let precoString = "0.00";
-    
     if (typeof item.preco === "string") {
       precoString = item.preco.replace(",", ".");
     } else if (typeof item.preco === "number") {
       precoString = item.preco.toString();
     }
-
     const precoNum = parseFloat(precoString);
-    const valorItem = isNaN(precoNum) ? 0 : precoNum;
-    
-    return acc + valorItem * item.qty;
+    return acc + (isNaN(precoNum) ? 0 : precoNum) * item.qty;
   }, 0);
 
   return (

@@ -34,7 +34,7 @@ export default function Home() {
   const mensagensPadrao = [
     "✨ Transforme sua festa em um momento inesquecível!",
     "🔥 Os temas mais amados estão aqui",
-    "📦 Entrega garantida em todo o Brasil",
+    "📦 Entrega em São José dos Campos e Região",
     "💖 Papelaria afetiva com acabamento premium"
   ];
 
@@ -71,6 +71,7 @@ export default function Home() {
         const qProd = query(collection(db, "produtos"), orderBy("createdAt", "desc"));
         const snapProd = await getDocs(qProd);
         setProdutos(snapProd.docs.map((d) => ({ id: d.id, ...d.data() })));
+        
         const qCat = collection(db, "categorias");
         const snapCat = await getDocs(qCat);
         setCategorias(snapCat.docs.map(d => d.data().nome));
@@ -119,34 +120,48 @@ export default function Home() {
       )}
 
       {/* HEADER */}
-      <header style={{...styles.header, height: isMobile ? 'auto' : 80, flexDirection: 'column', padding: isMobile ? '10px' : '0 16px'}}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', height: isMobile ? 60 : 80 }}>
-          <div style={{ cursor: "pointer", display: 'flex', alignItems: 'center', height: '100%', position: 'relative', width: isMobile ? 120 : 200 }} onClick={() => router.push("/")}>
-            <img src="/logo.png" style={{ height: isMobile ? 50 : 120, width: 'auto', position: isMobile ? 'static' : 'absolute', top: isMobile ? '0' : 62.5, transform: isMobile ? 'none' : 'translateY(-50%)' }} alt="Logo" />
+      <header style={{...styles.header, height: isMobile ? 'auto' : 90, padding: isMobile ? '10px' : '0 30px'}}>
+        <div style={styles.headerContainer}>
+          <div style={{ cursor: "pointer", display: 'flex', alignItems: 'center', zIndex: 10 }} onClick={() => router.push("/")}>
+            <img src="/logo.png" style={{ height: isMobile ? 45 : 65, width: 'auto' }} alt="Logo" />
           </div>
+
           {!isMobile && (
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-               <input placeholder="O que você precisa hoje?" value={search} onChange={(e) => setSearch(e.target.value)} style={styles.searchInput} />
+            <div style={styles.searchWrapperPC}>
+               <input 
+                placeholder="O que você precisa hoje?" 
+                value={search} 
+                onChange={(e) => setSearch(e.target.value)} 
+                style={styles.searchInputCenter} 
+               />
             </div>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: isMobile ? 'auto' : 200, justifyContent: 'flex-end' }}>
-            {isMobile && (
-              <a href="https://www.instagram.com/festaemtopo" target="_blank" rel="noopener noreferrer">
-                <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" style={{width: 28, height: 28}} alt="Instagram" />
-              </a>
-            )}
-            <button style={styles.cartBtn} onClick={() => router.push("/carrinho")}>🛒 ({cartCount})</button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 20, zIndex: 10 }}>
+            <a href="https://www.instagram.com/festaemtopo" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+                <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" style={{width: 24, height: 24}} alt="Instagram" />
+                {!isMobile && <span style={{marginLeft: 8, fontSize: '13px', color: '#E1306C', fontWeight: 'bold'}}>@festaemtopo</span>}
+            </a>
+            <button style={styles.cartBtn} onClick={() => router.push("/carrinho")}>
+               🛒 {isMobile ? `(${cartCount})` : `Carrinho (${cartCount})`}
+            </button>
           </div>
         </div>
+
         {isMobile && (
-          <div style={{ width: '100%', padding: '5px 0' }}>
-            <input placeholder="O que você precisa hoje?" value={search} onChange={(e) => setSearch(e.target.value)} style={{...styles.searchInput, maxWidth: 'none'}} />
+          <div style={{ width: '100%', padding: '8px 0 2px 0' }}>
+            <input 
+              placeholder="O que você precisa hoje?" 
+              value={search} 
+              onChange={(e) => setSearch(e.target.value)} 
+              style={styles.searchInputMobile} 
+            />
           </div>
         )}
       </header>
 
       {/* CATEGORIAS */}
-      <div style={{ ...styles.categoryBar, top: isMobile ? (lojaAberta ? 122 : 162) : (lojaAberta ? 80 : 120) }}>
+      <div style={{ ...styles.categoryBar, top: isMobile ? (lojaAberta ? 122 : 162) : (lojaAberta ? 90 : 130) }}>
         <div style={styles.categoryLeft}>
           <button onClick={() => setCategoriaAtiva("todos")} style={{...styles.categoryBtn, background: categoriaAtiva === "todos" ? "#2ecc71" : "#fff", color: categoriaAtiva === "todos" ? "#fff" : "#333"}}>TODOS</button>
           {categorias.map((cat) => (
@@ -155,17 +170,22 @@ export default function Home() {
         </div>
       </div>
 
-      {/* BANNER */}
-      <div style={{...styles.stripBanner, top: isMobile ? (lojaAberta ? 170 : 210) : (lojaAberta ? 128 : 168)}}>
+      {/* BANNER MENSAGEM */}
+      <div style={{...styles.stripBanner, top: isMobile ? (lojaAberta ? 170 : 210) : (lojaAberta ? 138 : 178)}}>
         <div style={{ opacity: fade ? 1 : 0, transition: '0.3s' }}>{mensagensParaExibir[msgIndex]}</div>
       </div>
 
-      {/* CARROSSEL - CORRIGIDO: relative no mobile para não criar buraco */}
+      {/* BOTÃO WHATSAPP */}
+      <a href="https://wa.me/5512981654900" target="_blank" rel="noopener noreferrer" style={styles.whatsappFixed}>
+        <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png" style={{width: 35, height: 35}} alt="WhatsApp" />
+      </a>
+
+      {/* CARROSSEL DE DESTAQUES */}
       {destaques.length > 0 && (
         <div style={{
           ...styles.carouselFixed, 
           position: isMobile ? 'relative' : 'sticky', 
-          top: isMobile ? 0 : (lojaAberta ? 172 : 212) 
+          top: isMobile ? 0 : (lojaAberta ? 182 : 222) 
         }}>
           <h2 style={styles.title}>🔥 Os Queridinhos da Semana</h2>
           <div style={styles.carouselWindow}>
@@ -181,26 +201,26 @@ export default function Home() {
         </div>
       )}
 
-      {/* GRADE - AJUSTE: marginTop zerado para colar no carrossel/banner */}
+      {/* GRADE DE PRODUTOS - CONFIGURADA PARA 6 COLUNAS */}
       <main style={{
         ...styles.grid,
-        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill,minmax(180px,1fr))',
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(6, 1fr)',
         padding: isMobile ? '10px' : '20px',
-        gap: isMobile ? '10px' : '20px',
-        marginTop: 10,
-        width: '100%',
-        maxWidth: '100%',
-        boxSizing: 'border-box'
+        gap: isMobile ? '10px' : '15px',
+        maxWidth: '1400px',
+        margin: '20px auto'
       }}>
         {produtosFiltrados.map((p) => (
           <div key={p.id} style={styles.card} onClick={() => router.push(`/produto/${p.id}`)}>
-            <div style={{...styles.imgWrapper, height: isMobile ? 150 : 180}}><img src={p.capa || null} style={styles.img} alt={p.nome} /></div>
+            <div style={{...styles.imgWrapper, height: isMobile ? 150 : 180}}>
+              <img src={p.capa || null} style={styles.img} alt={p.nome} />
+            </div>
             <div style={styles.info}>
-              <h3 style={{...styles.productName, fontSize: isMobile ? '12px' : '14px'}}>{p.nome}</h3>
+              <h3 style={{...styles.productName, fontSize: isMobile ? '12px' : '13px'}}>{p.nome}</h3>
               <div style={styles.priceContainer}>
                 <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4}}>
                   <span style={styles.priceLabel}>R$</span>
-                  <span style={{...styles.priceValue, fontSize: isMobile ? '16px' : '20px'}}>{p.precoBasico || p.preco}</span>
+                  <span style={{...styles.priceValue, fontSize: isMobile ? '16px' : '18px'}}>{p.precoBasico || p.preco}</span>
                 </div>
               </div>
               <button style={styles.viewBtn}>Ver Detalhes</button>
@@ -213,30 +233,43 @@ export default function Home() {
 }
 
 const styles = {
-  closedBar: { background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center", fontWeight: "bold", fontSize: "14px", position: "sticky", top: 0, zIndex: 2000 },
-  page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "'Segoe UI', Roboto, sans-serif", width: '100%', maxWidth: '100vw' },
-  header: { position: "sticky", top: 0, zIndex: 1000, background: "#fff", display: "flex", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", width: '100%' },
-  searchInput: { width: "100%", maxWidth: 420, padding: "12px 20px", borderRadius: "25px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none" },
-  cartBtn: { background: "#2ecc71", color: "#fff", border: "none", padding: "8px 15px", borderRadius: "25px", cursor: "pointer", fontWeight: "bold", fontSize: "13px" },
+  closedBar: { background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center", fontWeight: "bold", fontSize: "14px", position: "sticky", top: 0, zIndex: 2001 },
+  page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "'Segoe UI', Roboto, sans-serif", width: '100%' },
+  header: { position: "sticky", top: 0, zIndex: 1000, background: "#fff", display: "flex", flexDirection: "column", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", width: '100%', justifyContent: 'center' },
+  headerContainer: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '1200px', margin: '0 auto', position: 'relative' },
+  searchWrapperPC: { position: 'absolute', left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: '380px', display: 'flex', justifyContent: 'center' },
+  searchInputCenter: { width: "100%", padding: "10px 20px", borderRadius: "20px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none", background: '#f8fafc', textAlign: 'center' },
+  searchInputMobile: { width: "100%", padding: "12px 15px", borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none", background: '#f1f5f9' },
+  cartBtn: { background: "#2ecc71", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "25px", cursor: "pointer", fontWeight: "bold", fontSize: "14px" },
   categoryBar: { position: "sticky", zIndex: 999, background: "#fff", display: "flex", justifyContent: "center", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #f1f5f9", overflowX: "auto", width: '100%' },
   categoryLeft: { display: "flex", gap: 8 },
   categoryBtn: { border: "1px solid #e2e8f0", padding: "8px 14px", borderRadius: "20px", cursor: "pointer", fontSize: "10px", fontWeight: "bold", whiteSpace: "nowrap" },
   stripBanner: { position: "sticky", height: 44, zIndex: 998, background: "#2ecc71", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "13px", fontWeight: "500", width: '100%' },
-  carouselFixed: { width: "100%", background: "#fff", padding: "10px 0", zIndex: 997, borderBottom: "1px solid #f1f5f9" },
+  whatsappFixed: { position: 'fixed', bottom: '30px', right: '30px', width: '60px', height: '60px', backgroundColor: '#25d366', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 3000 },
+  carouselFixed: { width: "100%", background: "#fff", padding: "15px 0", zIndex: 997, borderBottom: "1px solid #f1f5f9" },
   title: { textAlign: "center", fontSize: "15px", color: "#1e293b", marginBottom: 8, fontWeight: "800" },
   carouselWindow: { overflow: "hidden", width: "100%" },
-  carouselTrack: { display: "flex", gap: 12, width: "max-content" },
-  cardCar: { width: 120, textAlign: "center", cursor: "pointer" },
-  imgCar: { width: "100%", height: 90, objectFit: "cover", borderRadius: "12px" },
-  nameCar: { marginTop: 4, fontSize: "10px", color: "#475569", fontWeight: "500" },
-  grid: { display: "grid" },
-  card: { background: "#fff", borderRadius: "16px", overflow: "hidden", boxShadow: "0 4px 15px rgba(0,0,0,0.05)", display: "flex", flexDirection: "column" },
+  carouselTrack: { display: "flex", gap: 12, width: "max-content", padding: '0 15px' },
+  cardCar: { width: 130, textAlign: "center", cursor: "pointer" },
+  imgCar: { width: "100%", height: 100, objectFit: "cover", borderRadius: "12px" },
+  nameCar: { marginTop: 4, fontSize: "11px", color: "#475569", fontWeight: "500" },
+  grid: { display: "grid", width: '100%', boxSizing: 'border-box' },
+  card: { background: "#fff", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", display: "flex", flexDirection: "column", transition: '0.2s', cursor: 'pointer', height: '100%' },
   imgWrapper: { position: "relative", width: "100%" },
   img: { width: "100%", height: "100%", objectFit: "cover" },
   info: { padding: "10px", textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" },
-  productName: { color: "#334155", marginBottom: "4px", fontWeight: "600" },
-  priceContainer: { marginBottom: "8px" },
+  productName: { 
+    color: "#334155", 
+    marginBottom: "5px", 
+    fontWeight: "600", 
+    lineHeight: '1.2',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden'
+  },
+  priceContainer: { marginBottom: "10px" },
   priceLabel: { fontSize: "11px", color: "#94a3b8" },
   priceValue: { color: "#2ecc71", fontWeight: "800" },
-  viewBtn: { background: "#f1f5f9", color: "#64748b", border: "none", padding: "6px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold", width: "100%", cursor: "pointer" }
+  viewBtn: { background: "#f1f5f9", color: "#64748b", border: "none", padding: "8px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold", width: "100%", cursor: "pointer" }
 };

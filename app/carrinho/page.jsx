@@ -17,7 +17,6 @@ export default function Carrinho() {
   const [nomePersonalizado, setNomePersonalizado] = useState("");
   const [idade, setIdade] = useState("");
   
-  // NOVOS ESTADOS PARA ENDEREÇO
   const [rua, setRua] = useState("");
   const [numero, setNumero] = useState("");
   const [bairro, setBairro] = useState("");
@@ -25,6 +24,8 @@ export default function Carrinho() {
   const [uf] = useState("SP");
 
   const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [pedidoFinalizado, setPedidoFinalizado] = useState(null); // Para manter o QR Code visível
 
   const whatsapp = "5512981654900"; 
 
@@ -33,7 +34,7 @@ export default function Carrinho() {
       if (snap.exists()) {
         const dados = snap.data();
         setFrete(Number(dados.frete) || 0);
-        setChavePix(dados.chavePix || "Sua Chave Aqui");
+        setChavePix(dados.chavePix || "");
         setLojaAberta(dados.lojaAberta ?? true);
       }
     });
@@ -73,13 +74,10 @@ export default function Carrinho() {
     if (!lojaAberta) { setErro("🔴 Loja em recesso. Pedidos desativados."); return false; }
     if (cart.length === 0) { setErro("⚠️ Carrinho vazio"); return false; }
     if (!nomeCliente.trim()) { setErro("⚠️ Preencha o NOME DO CLIENTE"); return false; }
-    
-    // VALIDAÇÃO DE ENDEREÇO
     if (!rua.trim() || !numero.trim() || !bairro.trim()) { 
       setErro("⚠️ Preencha os dados de ENDEREÇO (Rua, Nº e Bairro)"); 
       return false; 
     }
-
     if (isKitFesta) {
       if (!nomePersonalizado.trim()) { setErro("⚠️ Preencha o NOME para personalização"); return false; }
       if (!idade.trim()) { setErro("⚠️ Preencha a IDADE"); return false; }
@@ -90,6 +88,7 @@ export default function Carrinho() {
 
   async function enviar() {
     if (!validar()) return;
+    setCarregando(true);
     try {
       const pedidosRef = doc(db, "config", "pedidos");
       await updateDoc(pedidosRef, { contador: increment(1) });
@@ -116,11 +115,17 @@ export default function Carrinho() {
       });
       msg += `%0A🚚 Frete: R$ ${freteReais.toFixed(2).replace(".", ",")}%0A💰 *Total: R$ ${totalGeral.toFixed(2).replace(".", ",")}*%0A%0A📎 *ENVIANDO COMPROVANTE DO PIX...*`;
       
-      window.open(`https://wa.me/${whatsapp}?text=${msg}`, "_blank");
+      const whatsappUrl = `https://wa.me/${whatsapp}?text=${msg}`;
       
-      clearCart();
-      router.push("/");
-    } catch (e) { setErro("⚠️ Erro ao processar o pedido."); }
+      // Armazena o link mas não limpa o carrinho imediatamente para o QR Code não sumir
+      setPedidoFinalizado(whatsappUrl);
+      window.open(whatsappUrl, "_blank");
+
+    } catch (e) { 
+      setErro("⚠️ Erro ao processar o pedido."); 
+    } finally {
+      setCarregando(false);
+    }
   }
 
   return (
@@ -128,7 +133,6 @@ export default function Carrinho() {
       <h1>🛒 Carrinho</h1>
       <button onClick={() => router.push("/")} style={styles.continueBtn}>← Continuar comprando</button>
 
-      {/* AVISO DE FRETE CHAMATIVO */}
       <div style={styles.freteWarning}>
         📢 <strong>IMPORTANTE:</strong> O frete cobrado é válido apenas para a cidade de <strong>São José dos Campos-SP</strong>.
       </div>
@@ -157,17 +161,17 @@ export default function Carrinho() {
           <div style={{marginTop: 20}}>
             <h3 style={{fontSize: '16px', marginBottom: '10px'}}>📍 Dados de Entrega</h3>
             <input 
-              disabled={!lojaAberta}
+              disabled={!lojaAberta || !!pedidoFinalizado}
               placeholder="Nome do cliente *" 
               value={nomeCliente} 
               onChange={(e) => setNomeCliente(e.target.value)} 
               style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} 
             />
             <div style={{display: 'flex', gap: 10}}>
-                <input disabled={!lojaAberta} placeholder="Rua / Avenida *" value={rua} onChange={(e) => setRua(e.target.value)} style={{...styles.input, flex: 3}} />
-                <input disabled={!lojaAberta} placeholder="Nº *" value={numero} onChange={(e) => setNumero(e.target.value)} style={{...styles.input, flex: 1}} />
+                <input disabled={!lojaAberta || !!pedidoFinalizado} placeholder="Rua / Avenida *" value={rua} onChange={(e) => setRua(e.target.value)} style={{...styles.input, flex: 3}} />
+                <input disabled={!lojaAberta || !!pedidoFinalizado} placeholder="Nº *" value={numero} onChange={(e) => setNumero(e.target.value)} style={{...styles.input, flex: 1}} />
             </div>
-            <input disabled={!lojaAberta} placeholder="Bairro *" value={bairro} onChange={(e) => setBairro(e.target.value)} style={styles.input} />
+            <input disabled={!lojaAberta || !!pedidoFinalizado} placeholder="Bairro *" value={bairro} onChange={(e) => setBairro(e.target.value)} style={styles.input} />
             <div style={{display: 'flex', gap: 10}}>
                 <input disabled placeholder="Cidade" value={cidade} style={{...styles.input, background: '#eee', flex: 3}} />
                 <input disabled placeholder="UF" value={uf} style={{...styles.input, background: '#eee', flex: 1}} />
@@ -177,8 +181,8 @@ export default function Carrinho() {
           {isKitFesta && (
             <div style={{marginTop: 20}}>
               <div style={styles.alert}>⚠️ Dados de Personalização Obrigatórios</div>
-              <input disabled={!lojaAberta} placeholder="Nome para personalização *" value={nomePersonalizado} onChange={(e) => setNomePersonalizado(e.target.value)} style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} />
-              <input disabled={!lojaAberta} placeholder="Idade *" value={idade} onChange={(e) => setIdade(e.target.value.replace(/\D/g, ""))} style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} />
+              <input disabled={!lojaAberta || !!pedidoFinalizado} placeholder="Nome para personalização *" value={nomePersonalizado} onChange={(e) => setNomePersonalizado(e.target.value)} style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} />
+              <input disabled={!lojaAberta || !!pedidoFinalizado} placeholder="Idade *" value={idade} onChange={(e) => setIdade(e.target.value.replace(/\D/g, ""))} style={{...styles.input, opacity: lojaAberta ? 1 : 0.6}} />
             </div>
           )}
         </div>
@@ -186,21 +190,54 @@ export default function Carrinho() {
         <div style={styles.right}>
           <h3>💳 Pagamento PIX</h3>
           <p style={{fontSize: '11px', color: '#666', marginBottom: 10}}>Pague agora para liberar o botão</p>
-          <img key={totalGeral + chavePix} src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(pixPayload)}`} style={styles.qr} alt="Pix" />
-          <div style={styles.pixKey}>{chavePix}</div>
-          <button style={styles.copyBtn} onClick={() => { navigator.clipboard.writeText(pixPayload); alert("Código PIX Copiado!"); }}>Copiar código Pix</button>
           
+          {chavePix ? (
+            <img 
+              key={totalGeral + chavePix} 
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(pixPayload)}`} 
+              style={styles.qr} 
+              alt="Pix" 
+            />
+          ) : (
+            <div style={{...styles.qr, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px'}}>Carregando PIX...</div>
+          )}
+          
+          <div style={styles.pixKey}>{chavePix || "Carregando chave..."}</div>
           <button 
-            onClick={enviar} 
-            disabled={!lojaAberta} 
-            style={{
-              ...styles.whatsBtn,
-              background: lojaAberta ? "#25D366" : "#94a3b8",
-              cursor: lojaAberta ? "pointer" : "not-allowed"
-            }}
+            style={styles.copyBtn} 
+            onClick={() => { navigator.clipboard.writeText(pixPayload); alert("Código PIX Copiado!"); }}
           >
-            {lojaAberta ? "Confirmar e Enviar Comprovante" : "Loja em Recesso"}
+            Copiar código Pix
           </button>
+          
+          {pedidoFinalizado ? (
+            <div style={{marginTop: 10}}>
+                <button 
+                  onClick={() => window.open(pedidoFinalizado, "_blank")}
+                  style={{...styles.whatsBtn, background: "#25D366"}}
+                >
+                  Abrir WhatsApp Novamente
+                </button>
+                <button 
+                  onClick={() => { clearCart(); router.push("/"); }}
+                  style={{...styles.continueBtn, width: '100%', marginTop: 10, background: '#666'}}
+                >
+                  Finalizar e Sair
+                </button>
+            </div>
+          ) : (
+            <button 
+              onClick={enviar} 
+              disabled={!lojaAberta || carregando} 
+              style={{
+                ...styles.whatsBtn,
+                background: lojaAberta ? "#25D366" : "#94a3b8",
+                cursor: lojaAberta ? "pointer" : "not-allowed"
+              }}
+            >
+              {carregando ? "Processando..." : lojaAberta ? "Confirmar e Enviar Comprovante" : "Loja em Recesso"}
+            </button>
+          )}
           
           <div style={styles.notice}>
             {lojaAberta 
@@ -228,7 +265,7 @@ const styles = {
   input: { width: "100%", padding: 12, marginTop: 8, borderRadius: 8, border: "1px solid #ddd", fontSize: "14px", boxSizing: "border-box" },
   alert: { marginTop: 10, background: "#f31212", color: "#fff", padding: 10, borderRadius: 10, fontSize: 12 },
   errorBox: { marginTop: 10, background: "#e74c3c", color: "#fff", padding: 10, borderRadius: 10, fontWeight: "bold", marginBottom: 15 },
-  qr: { width: 160, height: 160, margin: "10px auto" },
+  qr: { width: 160, height: 160, margin: "10px auto", border: '1px solid #eee' },
   pixKey: { fontSize: 12, background: "#f1f1f1", padding: 8, borderRadius: 8, wordBreak: "break-word", marginBottom: 10 },
   copyBtn: { width: "100%", marginBottom: 10, padding: 10, background: "#3498db", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 'bold' },
   whatsBtn: { width: "100%", marginTop: 10, padding: 18, color: "#fff", border: "none", borderRadius: 10, fontWeight: "bold", fontSize: "15px", transition: "0.3s", boxShadow: "0 4px 12px rgba(37, 211, 102, 0.3)" },

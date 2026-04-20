@@ -9,14 +9,13 @@ export default function AdminConfig() {
   const router = useRouter();
   const [config, setConfig] = useState({
     chavePix: "",
-    freteFixo: "0,00", // Máscara para exibição
+    freteFixo: "0,00",
     avisoDestaque: "",
     lojaAberta: true
   });
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
 
-  // Formatação de moeda para o input
   const formatMoneyInput = (value) => {
     let v = value.replace(/\D/g, "");
     v = (Number(v) / 100).toFixed(2);
@@ -26,6 +25,7 @@ export default function AdminConfig() {
   useEffect(() => {
     async function carregarConfig() {
       try {
+        // Lendo do local correto: config/loja
         const docRef = doc(db, "config", "loja");
         const snap = await getDoc(docRef);
         
@@ -33,7 +33,6 @@ export default function AdminConfig() {
           const dados = snap.data();
           setConfig({
             chavePix: dados.chavePix || "",
-            // Pegamos 'frete' do banco e convertemos para string formatada
             freteFixo: ((dados.frete || 0) / 100).toFixed(2).replace(".", ","),
             avisoDestaque: dados.avisoDestaque || "",
             lojaAberta: dados.lojaAberta ?? true
@@ -50,23 +49,30 @@ export default function AdminConfig() {
   async function handleSalvar() {
     setSalvando(true);
     
-    // Converte a string "15,00" para o número 15.00 e depois para 1500 (centavos)
+    // 1. Limpeza rigorosa da chave Pix (remove espaços acidentais)
+    const chaveLimpa = config.chavePix.trim().replace(/\s/g, "");
+
+    // 2. Conversão do frete para centavos
     const valorNumerico = Number(config.freteFixo.replace(",", "."));
     const freteEmCentavos = Math.round(valorNumerico * 100);
 
-    // Objeto EXATO que o Carrinho espera ler
+    // 3. Montagem do objeto final para o banco
     const dadosParaSalvar = {
-      chavePix: config.chavePix,
-      frete: isNaN(freteEmCentavos) ? 0 : freteEmCentavos, // CAMPO 'frete'
+      chavePix: chaveLimpa, // Salva a chave sem espaços
+      frete: isNaN(freteEmCentavos) ? 0 : freteEmCentavos,
       avisoDestaque: config.avisoDestaque,
       lojaAberta: config.lojaAberta,
-      updatedAt: Date.now() // Força uma atualização de timestamp
+      updatedAt: Date.now()
     };
 
     try {
-      // Salva em config/loja
+      // Salva no local que o Carrinho consome: config/loja
       await setDoc(doc(db, "config", "loja"), dadosParaSalvar, { merge: true });
-      alert("Configurações atualizadas com sucesso! ✅");
+      
+      // Opcional: Limpar também o rastro no caminho antigo para evitar confusão futura
+      // await deleteDoc(doc(db, "configuraçoes", "geral")); 
+
+      alert("Configurações atualizadas! O checkout já está usando a nova chave. ✅");
     } catch (e) {
       console.error(e);
       alert("Erro ao salvar configurações.");
@@ -74,7 +80,7 @@ export default function AdminConfig() {
     setSalvando(false);
   }
 
-  if (loading) return <div style={styles.center}>Carregando...</div>;
+  if (loading) return <div style={styles.center}>Carregando configurações...</div>;
 
   return (
     <div style={styles.page}>
@@ -82,17 +88,20 @@ export default function AdminConfig() {
       
       <div style={styles.card}>
         <h2>⚙️ Configurações da Loja</h2>
-        <p style={styles.sub}>Altere os dados básicos que aparecem para os clientes</p>
+        <p style={styles.sub}>Gerencie os dados de pagamento e funcionamento</p>
 
         <div style={styles.inputGroup}>
-          <label style={styles.label}>Chave PIX (Exibida no Checkout)</label>
+          <label style={styles.label}>Chave PIX (Aleatória, CPF, Celular ou E-mail)</label>
           <input 
             type="text" 
             value={config.chavePix} 
             onChange={(e) => setConfig({...config, chavePix: e.target.value})}
             style={styles.input}
-            placeholder="Sua chave aqui..."
+            placeholder="Cole sua chave aqui..."
           />
+          <small style={{color: '#64748b', fontSize: '11px'}}>
+            ⚠️ Certifique-se de que a chave está correta para receber os pagamentos.
+          </small>
         </div>
 
         <div style={styles.inputGroup}>
@@ -103,14 +112,12 @@ export default function AdminConfig() {
             onChange={(e) => setConfig({...config, freteFixo: formatMoneyInput(e.target.value)})}
             style={styles.input}
           />
-          <small style={{color: '#94a3b8', fontSize: '11px'}}>Este valor será somado ao total do carrinho.</small>
         </div>
 
         <div style={styles.inputGroup}>
-          <label style={styles.label}>Aviso em Destaque (Topo do Site)</label>
+          <label style={styles.label}>Aviso no Topo</label>
           <input 
             type="text" 
-            placeholder="Ex: Frete grátis acima de R$ 200!"
             value={config.avisoDestaque} 
             onChange={(e) => setConfig({...config, avisoDestaque: e.target.value})}
             style={styles.input}
@@ -118,14 +125,14 @@ export default function AdminConfig() {
         </div>
 
         <div style={styles.inputGroup}>
-          <label style={styles.label}>Status da Loja</label>
+          <label style={styles.label}>Loja Online?</label>
           <select 
             value={config.lojaAberta} 
             onChange={(e) => setConfig({...config, lojaAberta: e.target.value === "true"})}
             style={styles.input}
           >
-            <option value="true">🟢 Aberta para Pedidos</option>
-            <option value="false">🔴 Em Recesso / Manutenção</option>
+            <option value="true">🟢 Receber Pedidos</option>
+            <option value="false">🔴 Pausar Pedidos</option>
           </select>
         </div>
 
@@ -134,7 +141,7 @@ export default function AdminConfig() {
           disabled={salvando} 
           style={salvando ? styles.btnDisabled : styles.btnSalvar}
         >
-          {salvando ? "Salvando..." : "💾 Salvar Alterações"}
+          {salvando ? "Processando..." : "💾 Salvar Alterações"}
         </button>
       </div>
     </div>
@@ -143,13 +150,13 @@ export default function AdminConfig() {
 
 const styles = {
   page: { padding: "40px", background: "#f1f5f9", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", fontFamily: "sans-serif" },
-  btnBack: { alignSelf: "flex-start", marginBottom: "20px", background: "#64748b", border: "none", color: "#fff", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" },
+  btnBack: { alignSelf: "flex-start", marginBottom: "20px", background: "#475569", border: "none", color: "#fff", padding: "10px 20px", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" },
   card: { background: "#fff", padding: "30px", borderRadius: "16px", boxShadow: "0 10px 25px rgba(0,0,0,0.05)", width: "100%", maxWidth: "500px" },
   sub: { color: "#64748b", fontSize: "14px", marginBottom: "25px" },
   inputGroup: { marginBottom: "20px" },
   label: { fontSize: "13px", fontWeight: "bold", color: "#334155", marginBottom: "5px", display: "block" },
-  input: { width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", marginTop: "5px", fontSize: "16px", outline: "none" },
-  btnSalvar: { width: "100%", padding: "15px", background: "#2ecc71", color: "#fff", border: "none", borderRadius: "10px", fontWeight: "bold", cursor: "pointer", fontSize: "16px", marginTop: "10px" },
+  input: { width: "100%", padding: "12px", borderRadius: "8px", border: "1px solid #cbd5e1", marginTop: "5px", fontSize: "16px", outline: "none", boxSizing: "border-box" },
+  btnSalvar: { width: "100%", padding: "15px", background: "#10b981", color: "#fff", border: "none", borderRadius: "10px", fontWeight: "bold", cursor: "pointer", fontSize: "16px", marginTop: "10px" },
   btnDisabled: { width: "100%", padding: "15px", background: "#94a3b8", color: "#fff", border: "none", borderRadius: "10px", fontWeight: "bold", cursor: "not-allowed", fontSize: "16px", marginTop: "10px" },
   center: { textAlign: "center", marginTop: "100px", fontSize: "18px", color: "#64748b" }
 };
