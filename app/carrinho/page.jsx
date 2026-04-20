@@ -18,14 +18,14 @@ export default function Carrinho() {
   const [idade, setIdade] = useState("");
   
   const [rua, setRua] = useState("");
-  const [numero, setNumero] = useState("");
+  const [numero, setNumero] = useState(""); // Estado do número da casa
   const [bairro, setBairro] = useState("");
   const [cidade] = useState("São José dos Campos");
   const [uf] = useState("SP");
 
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
-  const [pedidoFinalizado, setPedidoFinalizado] = useState(null); // Para manter o QR Code visível
+  const [pedidoFinalizado, setPedidoFinalizado] = useState(null);
 
   const whatsapp = "5512981654900"; 
 
@@ -116,8 +116,6 @@ export default function Carrinho() {
       msg += `%0A🚚 Frete: R$ ${freteReais.toFixed(2).replace(".", ",")}%0A💰 *Total: R$ ${totalGeral.toFixed(2).replace(".", ",")}*%0A%0A📎 *ENVIANDO COMPROVANTE DO PIX...*`;
       
       const whatsappUrl = `https://wa.me/${whatsapp}?text=${msg}`;
-      
-      // Armazena o link mas não limpa o carrinho imediatamente para o QR Code não sumir
       setPedidoFinalizado(whatsappUrl);
       window.open(whatsappUrl, "_blank");
 
@@ -169,7 +167,15 @@ export default function Carrinho() {
             />
             <div style={{display: 'flex', gap: 10}}>
                 <input disabled={!lojaAberta || !!pedidoFinalizado} placeholder="Rua / Avenida *" value={rua} onChange={(e) => setRua(e.target.value)} style={{...styles.input, flex: 3}} />
-                <input disabled={!lojaAberta || !!pedidoFinalizado} placeholder="Nº *" value={numero} onChange={(e) => setNumero(e.target.value)} style={{...styles.input, flex: 1}} />
+                
+                {/* CAMPO ATUALIZADO: APENAS NÚMEROS */}
+                <input 
+                  disabled={!lojaAberta || !!pedidoFinalizado} 
+                  placeholder="Nº *" 
+                  value={numero} 
+                  onChange={(e) => setNumero(e.target.value.replace(/\D/g, ""))} 
+                  style={{...styles.input, flex: 1}} 
+                />
             </div>
             <input disabled={!lojaAberta || !!pedidoFinalizado} placeholder="Bairro *" value={bairro} onChange={(e) => setBairro(e.target.value)} style={styles.input} />
             <div style={{display: 'flex', gap: 10}}>
