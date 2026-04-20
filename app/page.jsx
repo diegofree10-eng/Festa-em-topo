@@ -160,12 +160,23 @@ export default function Home() {
         )}
       </header>
 
-      {/* CATEGORIAS */}
+      {/* CATEGORIAS CORRIGIDAS PARA SCROLL TOTAL */}
       <div style={{ ...styles.categoryBar, top: isMobile ? (lojaAberta ? 122 : 162) : (lojaAberta ? 90 : 130) }}>
         <div style={styles.categoryLeft}>
-          <button onClick={() => setCategoriaAtiva("todos")} style={{...styles.categoryBtn, background: categoriaAtiva === "todos" ? "#2ecc71" : "#fff", color: categoriaAtiva === "todos" ? "#fff" : "#333"}}>TODOS</button>
+          <button 
+            onClick={() => setCategoriaAtiva("todos")} 
+            style={{...styles.categoryBtn, background: categoriaAtiva === "todos" ? "#2ecc71" : "#fff", color: categoriaAtiva === "todos" ? "#fff" : "#333"}}
+          >
+            TODOS
+          </button>
           {categorias.map((cat) => (
-            <button key={cat} onClick={() => setCategoriaAtiva(cat)} style={{...styles.categoryBtn, background: normalize(categoriaAtiva) === normalize(cat) ? "#2ecc71" : "#fff", color: normalize(categoriaAtiva) === normalize(cat) ? "#fff" : "#333"}}>{cat.toUpperCase()}</button>
+            <button 
+                key={cat} 
+                onClick={() => setCategoriaAtiva(cat)} 
+                style={{...styles.categoryBtn, background: normalize(categoriaAtiva) === normalize(cat) ? "#2ecc71" : "#fff", color: normalize(categoriaAtiva) === normalize(cat) ? "#fff" : "#333"}}
+            >
+                {cat.toUpperCase()}
+            </button>
           ))}
         </div>
       </div>
@@ -201,7 +212,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* GRADE DE PRODUTOS - CONFIGURADA PARA 6 COLUNAS */}
+      {/* GRADE DE PRODUTOS */}
       <main style={{
         ...styles.grid,
         gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(6, 1fr)',
@@ -241,9 +252,9 @@ const styles = {
   searchInputCenter: { width: "100%", padding: "10px 20px", borderRadius: "20px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none", background: '#f8fafc', textAlign: 'center' },
   searchInputMobile: { width: "100%", padding: "12px 15px", borderRadius: "10px", border: "1px solid #e2e8f0", fontSize: "14px", outline: "none", background: '#f1f5f9' },
   cartBtn: { background: "#2ecc71", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "25px", cursor: "pointer", fontWeight: "bold", fontSize: "14px" },
-  categoryBar: { position: "sticky", zIndex: 999, background: "#fff", display: "flex", justifyContent: "center", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #f1f5f9", overflowX: "auto", width: '100%' },
-  categoryLeft: { display: "flex", gap: 8 },
-  categoryBtn: { border: "1px solid #e2e8f0", padding: "8px 14px", borderRadius: "20px", cursor: "pointer", fontSize: "10px", fontWeight: "bold", whiteSpace: "nowrap" },
+  categoryBar: { position: "sticky", zIndex: 999, background: "#fff", display: "flex", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f1f5f9", overflowX: "auto", width: '100%' },
+  categoryLeft: { display: "flex", gap: 8, padding: '0 15px' },
+  categoryBtn: { border: "1px solid #e2e8f0", padding: "8px 14px", borderRadius: "20px", cursor: "pointer", fontSize: "10px", fontWeight: "bold", whiteSpace: "nowrap", flexShrink: 0 },
   stripBanner: { position: "sticky", height: 44, zIndex: 998, background: "#2ecc71", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "13px", fontWeight: "500", width: '100%' },
   whatsappFixed: { position: 'fixed', bottom: '30px', right: '30px', width: '60px', height: '60px', backgroundColor: '#25d366', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 3000 },
   carouselFixed: { width: "100%", background: "#fff", padding: "15px 0", zIndex: 997, borderBottom: "1px solid #f1f5f9" },
