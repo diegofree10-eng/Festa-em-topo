@@ -9,7 +9,8 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 
 export default function CadastroProdutos() {
-  const [uid, setUid] = useState(null);
+  // Tipagem para suportar String ou Null
+  const [uid, setUid] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
   const [categoria, setCategoria] = useState("");
@@ -21,13 +22,13 @@ export default function CadastroProdutos() {
   const [comprimento, setComprimento] = useState("");
   const [largura, setLargura] = useState("");
   const [altura, setAltura] = useState("");
-  const [files, setFiles] = useState([]);
-  const [imagens, setImagens] = useState([]);
-  const [produtos, setProdutos] = useState([]);
+  const [files, setFiles] = useState<File[]>([]);
+  const [imagens, setImagens] = useState<string[]>([]);
+  const [produtos, setProdutos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [editId, setEditId] = useState(null);
-  const [listaCategorias, setListaCategorias] = useState([]);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [listaCategorias, setListaCategorias] = useState<any[]>([]);
   const [showCatManager, setShowCatManager] = useState(false);
   const [showDescModal, setShowDescModal] = useState(false);
 
@@ -35,57 +36,46 @@ export default function CadastroProdutos() {
   const [filtroCategoria, setFiltroCategoria] = useState("Todos");
   const [filtroStatus, setFiltroStatus] = useState("Todos");
   const [modoMassa, setModoMassa] = useState(false);
-  const [selecionados, setSelecionados] = useState([]);
+  const [selecionados, setSelecionados] = useState<string[]>([]);
 
   useEffect(() => {
-    let unsubProdutos = null;
-    let unsubCategorias = null;
+    // RESOLUÇÃO DO ERRO DE BUILD: Tipagem explícita dos unsubscribers
+    let unsubProdutos: (() => void) | null = null;
+    let unsubCategorias: (() => void) | null = null;
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUid(user.uid);
         
-        // ESCUTA DE PRODUTOS COM ESCUDO DE PERMISSÃO REFORÇADO
         unsubProdutos = onSnapshot(
           query(collection(db, "lojistas", user.uid, "produtos"), orderBy("createdAt", "desc")), 
           (snap) => {
             setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
           },
           (error) => {
-            // Silencia o erro de permissão completamente
             if (error.code === "permission-denied") return;
             console.error("Erro Produtos:", error);
           }
         );
 
-        // ESCUTA DE CATEGORIAS COM ESCUDO DE PERMISSÃO REFORÇADO
         unsubCategorias = onSnapshot(
           query(collection(db, "lojistas", user.uid, "categorias"), orderBy("nome", "asc")), 
           (snap) => {
             setListaCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() })));
           },
           (error) => {
-            // Silencia o erro de permissão completamente
             if (error.code === "permission-denied") return;
             console.error("Erro Categorias:", error);
           }
         );
       } else {
-        // ORDEM DE LIMPEZA CRÍTICA: Desinscrever antes de limpar o UID
-        if (unsubProdutos) {
-          unsubProdutos();
-          unsubProdutos = null;
-        }
-        if (unsubCategorias) {
-          unsubCategorias();
-          unsubCategorias = null;
-        }
+        if (unsubProdutos) unsubProdutos();
+        if (unsubCategorias) unsubCategorias();
         
         setUid(null);
         setProdutos([]);
         setListaCategorias([]);
 
-        // Evita que a página tente re-renderizar dados protegidos
         if (window.location.pathname !== "/") {
           window.location.replace("/");
         }
@@ -99,17 +89,14 @@ export default function CadastroProdutos() {
     };
   }, []);
 
-  // --- O restante das funções (formatInput, salvar, etc) permanecem iguais ---
-  // [Mantendo a lógica original do Diego para não quebrar as funcionalidades]
-  
-  const formatInput = (value, setter) => {
+  const formatInput = (value: string, setter: (v: string) => void) => {
     const cleanValue = value.replace(/\D/g, "");
     if (!cleanValue) { setter(""); return; }
     const amount = (parseInt(cleanValue) / 100).toFixed(2);
     setter(amount);
   };
 
-  const calcularLucro = (venda, custo) => {
+  const calcularLucro = (venda: string, custo: string) => {
     const v = parseFloat(venda); 
     const c = parseFloat(custo);
     if (!v || !c || c === 0) return null;
@@ -119,7 +106,7 @@ export default function CadastroProdutos() {
   async function uploadImagens() {
     if (imagens.length + files.length > 4) return alert("Máximo 4 fotos.");
     setUploading(true);
-    const urls = [];
+    const urls: string[] = [];
     for (let file of files) {
       const formData = new FormData();
       formData.append("file", file);
@@ -130,11 +117,13 @@ export default function CadastroProdutos() {
         if (data.secure_url) urls.push(data.secure_url);
       } catch (e) { console.error(e); }
     }
-    setImagens([...imagens, ...urls]); setFiles([]); setUploading(false);
+    setImagens([...imagens, ...urls]); 
+    setFiles([]); 
+    setUploading(false);
   }
 
-  async function acaoEmMassa(tipo) {
-    if (selecionados.length === 0) return;
+  async function acaoEmMassa(tipo: string) {
+    if (selecionados.length === 0 || !uid) return;
     const batch = writeBatch(db);
     if (tipo === 'excluir' && !confirm("Excluir selecionados?")) return;
 
@@ -234,12 +223,12 @@ export default function CadastroProdutos() {
               <div key={c.id} style={styles.catItem}>
                 <span>{c.nome}</span>
                 <div style={{display:'flex', gap:'4px'}}>
-                  <button onClick={() => {const n=prompt("Novo:",c.nome); if(n) updateDoc(doc(db,"lojistas",uid,"categorias",c.id),{nome:n})}} style={styles.btnMini}>✏️</button>
-                  <button onClick={() => {if(confirm("Exc?")) deleteDoc(doc(db,"lojistas",uid,"categorias",c.id))}} style={styles.btnMini}>❌</button>
+                  <button onClick={() => {const n=prompt("Novo:",c.nome); if(n && uid) updateDoc(doc(db,"lojistas",uid,"categorias",c.id),{nome:n})}} style={styles.btnMini}>✏️</button>
+                  <button onClick={() => {if(confirm("Exc?") && uid) deleteDoc(doc(db,"lojistas",uid,"categorias",c.id))}} style={styles.btnMini}>❌</button>
                 </div>
               </div>
             ))}
-            <button onClick={() => {const n=prompt("Nova:"); if(n) addDoc(collection(db,"lojistas",uid,"categorias"),{nome:n})}} style={styles.btnAddCat}>+ Adicionar</button>
+            <button onClick={() => {const n=prompt("Nova:"); if(n && uid) addDoc(collection(db,"lojistas",uid,"categorias"),{nome:n})}} style={styles.btnAddCat}>+ Adicionar</button>
           </div>
         )}
 
@@ -292,7 +281,7 @@ export default function CadastroProdutos() {
         </div>
 
         <button style={styles.btnUpload}>
-          <input type="file" multiple accept="image/*" onChange={e => setFiles(Array.from(e.target.files))} style={styles.fileInvis} />
+          <input type="file" multiple accept="image/*" onChange={e => setFiles(Array.from(e.target.files || []))} style={styles.fileInvis} />
           {uploading ? "Salvando..." : "📷 Escolher Fotos (Máx 4)"}
         </button>
         {files.length > 0 && !uploading && (
@@ -352,7 +341,7 @@ export default function CadastroProdutos() {
                     {lucro && <span style={styles.markupTag}>+{lucro}%</span>}
                   </div>
                   <div style={styles.cardActions}>
-                    <button onClick={() => updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {destaque: !p.destaque})} style={styles.btnSlim}>{p.destaque ? "⭐ Destacado" : "☆ Destacar"}</button>
+                    <button onClick={() => uid && updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {destaque: !p.destaque})} style={styles.btnSlim}>{p.destaque ? "⭐ Destacado" : "☆ Destacar"}</button>
                     <button onClick={() => {
                       setEditId(p.id); 
                       setNome(p.nome); 
@@ -367,8 +356,8 @@ export default function CadastroProdutos() {
                       setLargura(p.largura || "");
                       setAltura(p.altura || "");
                     }} style={styles.btnSlim}>✏️ Editar</button>
-                    <button onClick={() => updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {ativo: !p.ativo})} style={styles.btnSlim}>{p.ativo ? "🚫 Ocultar" : "👁️ Mostrar"}</button>
-                    <button onClick={() => {if(confirm("Excluir?")) deleteDoc(doc(db,"lojistas",uid,"produtos",p.id))}} style={{...styles.btnSlim, color:'#ef4444'}}>🗑️ Excluir</button>
+                    <button onClick={() => uid && updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {ativo: !p.ativo})} style={styles.btnSlim}>{p.ativo ? "🚫 Ocultar" : "👁️ Mostrar"}</button>
+                    <button onClick={() => {if(confirm("Excluir?") && uid) deleteDoc(doc(db,"lojistas",uid,"produtos",p.id))}} style={{...styles.btnSlim, color:'#ef4444'}}>🗑️ Excluir</button>
                   </div>
                 </div>
               </div>
@@ -380,8 +369,8 @@ export default function CadastroProdutos() {
   );
 }
 
-// Estilos permanecem os mesmos (omitidos aqui por brevidade, mas devem ser mantidos conforme o seu original)
-const styles = {
+// OBJETO DE ESTILOS (Garante que 'styles' esteja definido)
+const styles: { [key: string]: React.CSSProperties } = {
   page: { display: 'flex', height: '100vh', width: '100%', maxWidth: '100vw', background: '#f8fafc', overflow: 'hidden', boxSizing: 'border-box', position: 'relative' },
   modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   modalContent: { background: '#fff', padding: '20px', borderRadius: '12px', width: '80%', maxWidth: '600px', height: '70vh', display: 'flex', flexDirection: 'column' },
