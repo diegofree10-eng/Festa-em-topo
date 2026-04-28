@@ -29,6 +29,6 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
-  ],
+, "app/admin/produtos/MobileLayout.jsx", "app/admin/DashboardGestao.jsx", "app/admin/page.jsx", "app/admin/Produtos"  ],
   "exclude": ["node_modules"]
 }
