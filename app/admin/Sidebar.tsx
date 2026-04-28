@@ -23,7 +23,6 @@ export default function Sidebar({ telaAtiva, setTelaAtiva, userRole }: SidebarPr
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         const docRef = doc(db, "lojistas", user.uid);
-        
         unsubRef.current = onSnapshot(docRef, 
           (docSnap) => {
             if (docSnap.exists()) {
@@ -35,9 +34,7 @@ export default function Sidebar({ telaAtiva, setTelaAtiva, userRole }: SidebarPr
             }
           },
           (error) => {
-            if (error.code === "permission-denied" || error.code === "failed-precondition") {
-              return;
-            }
+            if (error.code === "permission-denied") return;
             console.error("Erro ao buscar dados da loja:", error);
           }
         );
@@ -55,26 +52,37 @@ export default function Sidebar({ telaAtiva, setTelaAtiva, userRole }: SidebarPr
     };
   }, []);
 
+  // --- FUNÇÃO DE LOGOUT REFORMULADA ---
   const handleLogout = async () => {
     if (confirm("Deseja realmente sair do sistema?")) {
       try {
-        // 1. Corta a conexão com o Firestore imediatamente
+        // 1. Mata as escutas em tempo real do Firestore
         if (unsubRef.current) {
           unsubRef.current();
           unsubRef.current = null;
         }
 
-        // 2. Redireciona para a página de LOGIN (app/login)
-        window.location.replace("/login"); 
+        // 2. Destrói a sessão no Firebase (Isso invalida o token no Google)
+        await signOut(auth);
 
-        // 3. Desloga do Firebase após o redirecionamento iniciar
-        setTimeout(async () => {
-          await signOut(auth);
-        }, 100);
+        // 3. Limpa TUDO que houver no navegador (Cache, Tokens, States)
+        localStorage.clear();
+        sessionStorage.clear();
+
+        // 4. Limpa Cookies (Segurança adicional)
+        document.cookie.split(";").forEach((c) => {
+          document.cookie = c
+            .replace(/^ +/, "")
+            .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+        });
+
+        // 5. Redireciona com RECARREGAMENTO TOTAL
+        // window.location.href é melhor que replace para limpar a memória do Next.js
+        window.location.href = "/login";
 
       } catch (error) {
         console.error("Erro ao sair:", error);
-        window.location.replace("/login");
+        window.location.href = "/login";
       }
     }
   };
@@ -117,7 +125,6 @@ export default function Sidebar({ telaAtiva, setTelaAtiva, userRole }: SidebarPr
           </button>
         ))}
 
-        {/* Botão Master - Mantido exatamente como o original */}
         {userRole === 'master' && (
           <button
             onClick={() => setTelaAtiva('gestao-geral')}
@@ -144,56 +151,13 @@ export default function Sidebar({ telaAtiva, setTelaAtiva, userRole }: SidebarPr
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
-  sidebar: { 
-    width: '260px', 
-    background: '#1e293b', 
-    color: '#fff', 
-    display: 'flex', 
-    flexDirection: 'column', 
-    height: '100vh', 
-    position: 'sticky', 
-    top: 0 
-  },
-  brandArea: {
-    padding: '40px 20px 30px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    borderBottom: '1px solid #334155',
-    marginBottom: '10px'
-  },
-  logoContainer: {
-    width: '105px',
-    height: '105px',
-    borderRadius: '12px',
-    background: '#334155',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    border: '3px solid #fdb813',
-    marginBottom: '15px'
-  },
+  sidebar: { width: '260px', background: '#1e293b', color: '#fff', display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 },
+  brandArea: { padding: '40px 20px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', borderBottom: '1px solid #334155', marginBottom: '10px' },
+  logoContainer: { width: '105px', height: '105px', borderRadius: '12px', background: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '3px solid #fdb813', marginBottom: '15px' },
   logoImg: { width: '100%', height: '100%', objectFit: 'cover' },
   logoPlaceholder: { fontSize: '36px', fontWeight: 'bold', color: '#fdb813' },
   storeName: { fontSize: '18px', color: '#fff', textAlign: 'center', fontWeight: '600' },
   nav: { flex: 1, padding: '10px', display: 'flex', flexDirection: 'column', gap: '5px' },
-  navBtn: { 
-    display: 'flex', alignItems: 'center', padding: '12px 15px', 
-    borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', width: '100%'
-  },
-  logoutBtn: { 
-    padding: '20px', 
-    border: 'none', 
-    background: 'none', 
-    color: '#ef4444', 
-    cursor: 'pointer', 
-    display: 'flex', 
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderTop: '1px solid #334155',
-    width: '100%',
-    fontWeight: 'bold',
-    fontSize: '15px'
-  }
+  navBtn: { display: 'flex', alignItems: 'center', padding: '12px 15px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', width: '100%', transition: 'all 0.2s' },
+  logoutBtn: { padding: '20px', border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '1px solid #334155', width: '100%', fontWeight: 'bold', fontSize: '15px' }
 };

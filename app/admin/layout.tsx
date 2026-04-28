@@ -1,40 +1,54 @@
 "use client";
-import React from "react";
-import ProtectedRoute from "./ProtectedRoute";
+import { useEffect, useState, useLayoutEffect } from "react";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { useRouter, usePathname } from "next/navigation";
 
-// --- SEU INTERCEPTADOR DE ERROS (Mantido e ativo) ---
-if (typeof window !== "undefined") {
-  const originalError = console.error;
-  
-  console.error = (...args) => {
-    const isFirebasePermissionError = args.some(arg => {
-      const message = arg?.message || (typeof arg === 'string' ? arg : "");
-      const stack = arg?.stack || "";
-      const code = arg?.code || "";
-      
-      return (
-        message.includes("permission-denied") || 
-        message.includes("insufficient permissions") ||
-        code === "permission-denied" ||
-        stack.includes("permission-denied")
-      );
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const [authorized, setAuthorized] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Usamos useLayoutEffect para a primeira checagem ser antes da pintura da tela
+  useLayoutEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthorized(true);
+        setLoading(false);
+      } else {
+        setAuthorized(false);
+        setLoading(false);
+        
+        // Se não há usuário, manda para o login imediatamente
+        if (pathname.startsWith('/admin')) {
+          router.replace("/login");
+        }
+      }
     });
 
-    if (isFirebasePermissionError) {
-      return; // Bloqueia o erro no console
-    }
+    return () => unsubscribe();
+  }, [router, pathname]);
 
-    originalError.apply(console, args);
-  };
-}
-
-// --- LAYOUT COM PROTEÇÃO ---
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <ProtectedRoute>
-      <div style={{ width: "100%", minHeight: "100vh" }}>
-        {children}
+  // 1. Enquanto checa, bloqueia TUDO com uma tela de segurança
+  if (loading) {
+    return (
+      <div style={{ 
+        height: '100vh', width: '100vw', background: '#0f172a', 
+        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+        color: '#fff', zIndex: 99999, position: 'fixed', top: 0, left: 0 
+      }}>
+        <strong>Protegendo acesso...</strong>
       </div>
-    </ProtectedRoute>
-  );
+    );
+  }
+
+  // 2. Trava absoluta: Se o Firebase disse que não tem user, o HTML do Admin MORRE aqui.
+  // Mesmo que o cara aperte o botão "voltar", ele verá apenas uma tela nula.
+  if (!authorized) {
+    return null; 
+  }
+
+  // 3. Acesso liberado
+  return <div style={{ width: "100%", minHeight: "100vh" }}>{children}</div>;
 }

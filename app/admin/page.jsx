@@ -1,40 +1,56 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import dynamic from 'next/dynamic'; // Necessário para bloquear o SSR
+import { useRouter } from "next/navigation";
+import { auth, db } from "@/lib/firebase"; 
+import { doc, getDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+
+// Importações dos seus componentes
 import Sidebar from "./Sidebar"; 
 import DashboardGestao from "./DashboardGestao"; 
 import Produtos from "./produtos/page"; 
 import MobileLayout from "./produtos/MobileLayout";
 import AdminConfig from "./config/page"; 
-import { auth, db } from "@/lib/firebase"; // NOVO: Importa auth e db
-import { doc, getDoc } from "firebase/firestore"; // NOVO: Para buscar a role
 
-export default function AdminPage() {
+// 1. Mudamos o nome da função para AdminContent
+function AdminContent() {
   const [telaAtiva, setTelaAtiva] = useState('dash');
   const [isMobile, setIsMobile] = useState(null);
-  const [userRole, setUserRole] = useState(null); // NOVO: Estado para guardar a role (master/lojista)
+  const [userRole, setUserRole] = useState(null);
+  const [podeVer, setPodeVer] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     const checkDevice = () => setIsMobile(window.innerWidth < 1024);
     checkDevice();
     window.addEventListener("resize", checkDevice);
 
-    // NOVO: Busca a ROLE do usuário logado no Firebase
-    const fetchUserRole = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        const docRef = doc(db, "lojistas", user.uid); // Ajuste "lojistas" para o nome da sua coleção
-        const docSnap = await getDoc(docRef);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        router.replace("/login");
+      } else {
+        const docSnap = await getDoc(doc(db, "lojistas", user.uid));
         if (docSnap.exists()) {
           setUserRole(docSnap.data().role);
+          setPodeVer(true); // Só libera a tela aqui
+        } else {
+          router.replace("/login");
         }
       }
+    });
+
+    return () => {
+      window.removeEventListener("resize", checkDevice);
+      unsubscribe();
     };
-    fetchUserRole();
+  }, [router]);
 
-    return () => window.removeEventListener("resize", checkDevice);
-  }, []);
-
-  if (isMobile === null) return null;
+  // Se não estiver confirmado, a tela fica TOTALMENTE vazia (Preta/Branca)
+  // Isso impede que qualquer menu ou botão apareça via URL
+  if (!podeVer || isMobile === null) {
+    return <div style={{ height: '100vh', background: '#0f172a' }} />;
+  }
 
   if (isMobile) {
     return <MobileLayout telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} />;
@@ -42,34 +58,22 @@ export default function AdminPage() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
-      {/* AJUSTE: Agora passamos o userRole para a Sidebar */}
-      <Sidebar 
-        telaAtiva={telaAtiva} 
-        setTelaAtiva={setTelaAtiva} 
-        userRole={userRole} 
-      />
-      
+      <Sidebar telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} userRole={userRole} />
       <main style={{ flex: 1, overflowY: "auto" }}>
         {telaAtiva === 'dash' && <DashboardGestao />}
         {telaAtiva === 'produtos' && <Produtos />}
-
-        {telaAtiva === 'pedidos' && (
-          <div style={{ padding: '40px' }}>
-            <h2>📦 Gestão de Pedidos e Produção</h2>
-            <p>Em breve: controle de status e pagamentos.</p>
-          </div>
-        )}
-
-        {telaAtiva === 'config' && <AdminConfig />} 
-        
-        {/* NOVO: Espaço para a tela de Gestão Geral (Dono) */}
+        {telaAtiva === 'config' && <AdminConfig />}
         {telaAtiva === 'gestao-geral' && (
-          <div style={{ padding: '40px' }}>
-            <h2>⚙️ Painel do Proprietário (Master)</h2>
-            <p>Aqui você verá todos os lojistas cadastrados.</p>
-          </div>
+          <div style={{ padding: '40px' }}><h2>Painel Master</h2></div>
         )}
       </main>
     </div>
   );
 }
+
+// 2. O PULO DO GATO: Exportamos com SSR desativado
+// Isso impede o Next.js de carregar a página "por trás" sem permissão
+export default dynamic(() => Promise.resolve(AdminContent), { 
+  ssr: false,
+  loading: () => <div style={{ height: '100vh', background: '#0f172a' }} />
+});
