@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, addDoc, collection } from "firebase/firestore";
 import { useParams, useRouter } from "next/navigation";
 import { useCart } from "@/app/context/CartContext";
 
@@ -17,37 +17,64 @@ export default function DetalhesProduto() {
   const [variacaoSelecionada, setVariacaoSelecionada] = useState("Basico");
   const [lojaAberta, setLojaAberta] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [dadosLoja, setDadosLoja] = useState(null);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 850);
     handleResize();
     window.addEventListener("resize", handleResize);
 
-    const unsubLoja = onSnapshot(doc(db, "config", "loja"), (snap) => {
-      if (snap.exists()) {
-        setLojaAberta(snap.data().lojaAberta ?? true);
-      }
-    });
-
     async function carregarProduto() {
       if (!id) return;
+      // Busca o produto na coleção global ou subcoleção dependendo da sua estrutura
+      // Aqui assumimos que você sabe o ID do produto
       const docRef = doc(db, "produtos", id);
       const snap = await getDoc(docRef);
 
       if (snap.exists()) {
-        const dados = snap.id ? { id: snap.id, ...snap.data() } : null;
+        const dados = { id: snap.id, ...snap.data() };
         setProduto(dados);
         setFotoAtiva(dados?.capa);
+
+        // BUSCA DADOS DO LOJISTA (Dono do produto)
+        if (dados.lojistaId) {
+          const lojaSnap = await getDoc(doc(db, "lojistas", dados.lojistaId));
+          if (lojaSnap.exists()) setDadosLoja(lojaSnap.data());
+
+          // Monitora se a loja está aberta
+          onSnapshot(doc(db, "lojistas", dados.lojistaId, "config", "loja"), (s) => {
+            if (s.exists()) setLojaAberta(s.data().lojaAberta ?? true);
+          });
+        }
       }
       setLoading(false);
     }
 
     carregarProduto();
-    return () => {
-      unsubLoja();
-      window.removeEventListener("resize", handleResize);
-    };
+    return () => window.removeEventListener("resize", handleResize);
   }, [id]);
+
+  const handleDenunciar = async () => {
+    const motivo = prompt("Por favor, descreva o problema com este produto:");
+    if (!motivo) return;
+
+    try {
+      await addDoc(collection(db, "denuncias"), {
+        lojistaId: produto?.lojistaId || "desconhecido",
+        nomeLoja: dadosLoja?.nomeLoja || "Loja não identificada",
+        produtoId: id,
+        nomeProduto: produto?.nome,
+        motivo: motivo,
+        status: "pendente",
+        tipo: "PRODUTO_ESPECIFICO",
+        urlOriginal: window.location.href,
+        createdAt: Date.now()
+      });
+      alert("Denúncia enviada. O administrador master irá analisar.");
+    } catch (e) {
+      alert("Erro ao enviar denúncia.");
+    }
+  };
 
   const handleAddCart = () => {
     if (!lojaAberta) return;
@@ -64,7 +91,6 @@ export default function DetalhesProduto() {
   if (!produto) return <div style={styles.center}>Produto não encontrado!</div>;
 
   return (
-    // AJUSTE: overflowX hidden e maxWidth 100vw para matar o scroll horizontal
     <div style={{...styles.container, maxWidth: '100vw', overflowX: 'hidden'}}>
       <button onClick={() => router.back()} style={styles.btnVoltar}>← Voltar para a Loja</button>
 
@@ -72,7 +98,7 @@ export default function DetalhesProduto() {
         ...styles.content,
         gridTemplateColumns: isMobile ? "1fr" : "1.1fr 0.9fr",
         gap: isMobile ? "20px" : "40px",
-        width: '100%' // Garante que o grid não estoure
+        width: '100%' 
       }}>
         
         <div style={styles.gallery}>
@@ -148,6 +174,11 @@ export default function DetalhesProduto() {
               {lojaAberta ? "🛒 Adicionar ao Carrinho" : "Indisponível"}
             </button>
           </div>
+
+          <button onClick={handleDenunciar} style={styles.reportBtn}>
+            🚩 Reportar este produto
+          </button>
+
           {!lojaAberta && (
             <p style={{textAlign: 'center', fontSize: '11px', color: '#e74c3c', marginTop: '8px', fontWeight: 'bold'}}>
               Estamos em recesso. Pedidos desativados.
@@ -160,7 +191,6 @@ export default function DetalhesProduto() {
 }
 
 const styles = {
-  // AJUSTE: container agora usa box-sizing e largura máxima segura
   container: { maxWidth: "1100px", margin: "0 auto", padding: "10px 20px", fontFamily: "'Segoe UI', sans-serif", boxSizing: "border-box" },
   btnVoltar: { background: "none", border: "none", color: "#94a3b8", cursor: "pointer", marginBottom: "15px", fontSize: "14px", fontWeight: "bold" },
   content: { display: "grid", gap: "40px", alignItems: "start", boxSizing: "border-box" },
@@ -183,5 +213,6 @@ const styles = {
   scrollDesc: { overflowY: "auto", fontSize: "14px", color: "#475569", lineHeight: "1.4", wordBreak: "break-word" },
   btnArea: { display: "flex", justifyContent: "center", marginTop: "25px" }, 
   btnAdd: { color: "#fff", border: "none", padding: "10px 20px", borderRadius: "10px", fontWeight: "bold", fontSize: "15px", transition: "0.3s" },
+  reportBtn: { background: "none", border: "none", color: "#cbd5e1", fontSize: "11px", cursor: "pointer", marginTop: "15px", textDecoration: "underline", alignSelf: "center" },
   center: { textAlign: "center", marginTop: "100px", color: "#64748b" }
 };

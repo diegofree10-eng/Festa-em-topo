@@ -8,8 +8,14 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
+// --- CONFIGURAÇÃO DE SEGURANÇA ---
+const PALAVRAS_PROIBIDAS = [
+  "admin", "master", "suporte", "festaemtopo", "root", "null", 
+  "undefined", "api", "vendas", "financeiro", "ajuda", "config",
+  "sistema", "login", "auth", "teste", "gerente"
+];
+
 export default function CadastroProdutos() {
-  // Tipagem para suportar String ou Null
   const [uid, setUid] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -38,47 +44,46 @@ export default function CadastroProdutos() {
   const [modoMassa, setModoMassa] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>([]);
 
+  // ESTADOS DO POP-UP SHOPEE
+  const [showVarModal, setShowVarModal] = useState(false);
+  const [nomeVariacao, setNomeVariacao] = useState("Cor");
+  const [opcoes, setOpcoes] = useState(["Azul", "Rosa"]);
+  const [tabelaPrecos, setTabelaPrecos] = useState<any>({});
+
+  // --- FUNÇÃO DE VALIDAÇÃO ---
+  const validarTexto = (texto: string) => {
+    const t = texto.toLowerCase();
+    return !PALAVRAS_PROIBIDAS.some(p => t.includes(p));
+  };
+
+  const temVariaveisComPreco = Object.values(tabelaPrecos).some((v: any) => {
+    return v?.preco && v.preco.toString().trim() !== "" && parseFloat(v.preco) > 0;
+  });
+
   useEffect(() => {
-    // RESOLUÇÃO DO ERRO DE BUILD: Tipagem explícita dos unsubscribers
     let unsubProdutos: (() => void) | null = null;
     let unsubCategorias: (() => void) | null = null;
 
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUid(user.uid);
-        
         unsubProdutos = onSnapshot(
           query(collection(db, "lojistas", user.uid, "produtos"), orderBy("createdAt", "desc")), 
-          (snap) => {
-            setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-          },
-          (error) => {
-            if (error.code === "permission-denied") return;
-            console.error("Erro Produtos:", error);
-          }
+          (snap) => { setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() }))); },
+          (error) => { if (error.code === "permission-denied") return; console.error("Erro Produtos:", error); }
         );
 
         unsubCategorias = onSnapshot(
           query(collection(db, "lojistas", user.uid, "categorias"), orderBy("nome", "asc")), 
-          (snap) => {
-            setListaCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-          },
-          (error) => {
-            if (error.code === "permission-denied") return;
-            console.error("Erro Categorias:", error);
-          }
+          (snap) => { setListaCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() }))); },
+          (error) => { if (error.code === "permission-denied") return; console.error("Erro Categorias:", error); }
         );
       } else {
         if (unsubProdutos) unsubProdutos();
         if (unsubCategorias) unsubCategorias();
-        
         setUid(null);
         setProdutos([]);
         setListaCategorias([]);
-
-        if (window.location.pathname !== "/") {
-          window.location.replace("/");
-        }
       }
     });
 
@@ -101,6 +106,21 @@ export default function CadastroProdutos() {
     const c = parseFloat(custo);
     if (!v || !c || c === 0) return null;
     return (((v - c) / c) * 100).toFixed(0);
+  };
+
+  const adicionarOpcao = () => setOpcoes([...opcoes, ""]);
+  const atualizarOpcao = (index: number, valor: string) => {
+    const novas = [...opcoes];
+    novas[index] = valor;
+    setOpcoes(novas);
+  };
+  const handleInputTabela = (opcao: string, campo: string, valor: string) => {
+    const cleanValue = valor.replace(/\D/g, "");
+    const formatted = cleanValue ? (parseInt(cleanValue) / 100).toFixed(2) : "";
+    setTabelaPrecos((prev: any) => ({
+      ...prev,
+      [opcao]: { ...prev[opcao], [campo]: formatted }
+    }));
   };
 
   async function uploadImagens() {
@@ -147,22 +167,61 @@ export default function CadastroProdutos() {
 
   async function salvar() {
     if (!uid) return;
+
+    // --- VALIDAÇÃO DE PALAVRAS PROIBIDAS ---
+    if (!validarTexto(nome)) return alert("O nome do produto contém palavras não permitidas.");
+
+    // --- VALIDAÇÃO DE CAMPOS OBRIGATÓRIOS ---
+    if (!nome.trim()) return alert("O nome do produto é obrigatório.");
+    if (!categoria) return alert("Selecione uma categoria.");
+    if (!descricao.trim()) return alert("A descrição é obrigatória.");
+    if (imagens.length === 0) return alert("Adicione pelo menos uma imagem.");
+    
+    if (precisaFrete) {
+        if (!peso || !comprimento || !largura || !altura) {
+            return alert("Para produtos físicos, as medidas e peso são obrigatórios.");
+        }
+    }
+
+    if (!temVariaveisComPreco) {
+        if (!precoBasico || parseFloat(precoBasico) <= 0) return alert("Defina o preço de venda.");
+        if (!custoUnitario || parseFloat(custoUnitario) <= 0) return alert("Defina o custo unitário.");
+    }
+
     setLoading(true);
+
+    let precoFinalParaSalvar = precoBasico;
+    let custoFinalParaSalvar = custoUnitario;
+
+    if (temVariaveisComPreco) {
+      const precos = Object.values(tabelaPrecos).map((v: any) => parseFloat(v.preco)).filter(p => !isNaN(p) && p > 0);
+      const custos = Object.values(tabelaPrecos).map((v: any) => parseFloat(v.custo)).filter(c => !isNaN(c) && c > 0);
+      
+      if (precos.length > 0) precoFinalParaSalvar = Math.min(...precos).toFixed(2);
+      if (custos.length > 0) custoFinalParaSalvar = Math.min(...custos).toFixed(2);
+    }
 
     const dados = {
       nome, 
       descricao, 
       categoria, 
-      precoBasico: precoBasico || "0.00", 
-      custoUnitario: custoUnitario || "0.00", 
+      precoBasico: precoFinalParaSalvar, 
+      custoUnitario: custoFinalParaSalvar, 
       ativo, 
       precisaFrete,
-      peso: precisaFrete ? (parseFloat(peso) > 0 ? peso : "0.10") : "0.00",
-      comprimento: precisaFrete ? (parseFloat(comprimento) >= 13 ? comprimento : "13.00") : "0.00",
-      largura: precisaFrete ? (parseFloat(largura) >= 10 ? largura : "10.00") : "0.00",
-      altura: precisaFrete ? (parseFloat(altura) >= 2 ? altura : "2.00") : "0.00",
+      peso: precisaFrete ? peso : "0.00",
+      comprimento: precisaFrete ? comprimento : "0.00",
+      largura: precisaFrete ? largura : "0.00",
+      altura: precisaFrete ? altura : "0.00",
       imagens, 
       capa: imagens[0] || "", 
+      temVariacoes: temVariaveisComPreco,
+      variacoes: temVariaveisComPreco ? opcoes.map(op => ({
+        nome: op,
+        preco: tabelaPrecos[op]?.preco || precoBasico,
+        custo: tabelaPrecos[op]?.custo || custoUnitario
+      })) : [],
+      nomeVariacaoPrincipal: nomeVariacao,
       updatedAt: Date.now()
     };
 
@@ -170,6 +229,7 @@ export default function CadastroProdutos() {
       if (editId) await updateDoc(doc(db, "lojistas", uid, "produtos", editId), dados);
       else await addDoc(collection(db, "lojistas", uid, "produtos"), { ...dados, destaque: false, createdAt: Date.now() });
       limparForm();
+      alert("Produto salvo com sucesso!");
     } catch (e) { alert("Erro ao salvar."); }
     setLoading(false);
   }
@@ -177,6 +237,7 @@ export default function CadastroProdutos() {
   const limparForm = () => {
     setNome(""); setDescricao(""); setCategoria(""); setPrecoBasico(""); setCustoUnitario("");
     setPeso(""); setComprimento(""); setLargura(""); setAltura(""); setImagens([]); setEditId(null); setFiles([]); setPrecisaFrete(true);
+    setOpcoes(["Azul", "Rosa"]); setNomeVariacao("Cor"); setTabelaPrecos({});
   };
 
   const produtosFiltrados = produtos.filter(p => {
@@ -191,13 +252,7 @@ export default function CadastroProdutos() {
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
             <h3 style={{marginBottom: '10px'}}>Editar Descrição</h3>
-            <textarea 
-              style={styles.modalTextarea} 
-              value={descricao} 
-              onChange={e => setDescricao(e.target.value)} 
-              placeholder="Digite aqui a descrição completa do seu produto..."
-              autoFocus
-            />
+            <textarea style={styles.modalTextarea} value={descricao} onChange={e => setDescricao(e.target.value)} autoFocus />
             <div style={{display: 'flex', gap: '10px', marginTop: '15px'}}>
               <button onClick={() => setShowDescModal(false)} style={styles.btnSave}>Concluir</button>
             </div>
@@ -205,13 +260,71 @@ export default function CadastroProdutos() {
         </div>
       )}
 
+      {showVarModal && (
+        <div style={shopeeStyles.overlay}>
+          <div style={shopeeStyles.modal}>
+            <div style={shopeeStyles.header}>
+              <h3 style={shopeeStyles.title}>Informações de Vendas</h3>
+              <button onClick={() => setShowVarModal(false)} style={shopeeStyles.closeBtn}>✕</button>
+            </div>
+            <div style={shopeeStyles.content}>
+              <div style={shopeeStyles.section}>
+                <label style={shopeeStyles.label}>Variação 1</label>
+                <div style={shopeeStyles.varBox}>
+                  <div style={shopeeStyles.inputGroup}>
+                    <span>Nome:</span>
+                    <input style={shopeeStyles.input} value={nomeVariacao} onChange={(e) => setNomeVariacao(e.target.value)} placeholder="Ex: Cor" />
+                  </div>
+                  <div style={shopeeStyles.optionsGrid}>
+                    <span>Opções:</span>
+                    <div style={shopeeStyles.tagsContainer}>
+                      {opcoes.map((op, idx) => (
+                        <div key={idx} style={shopeeStyles.tagInputWrapper}>
+                          <input style={shopeeStyles.tagInput} value={op} onChange={(e) => atualizarOpcao(idx, e.target.value)} />
+                          <button style={shopeeStyles.delTag} onClick={() => setOpcoes(opcoes.filter((_, i) => i !== idx))}>✕</button>
+                        </div>
+                      ))}
+                      <button style={shopeeStyles.addBtn} onClick={adicionarOpcao}>+ Adicionar Opção</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style={shopeeStyles.section}>
+                <table style={shopeeStyles.table}>
+                  <thead>
+                    <tr style={shopeeStyles.trHead}>
+                      <th style={shopeeStyles.th}>{nomeVariacao || "Variação"}</th>
+                      <th style={shopeeStyles.th}>Preço (R$)</th>
+                      <th style={shopeeStyles.th}>Custo (R$)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {opcoes.map((op, idx) => (
+                      <tr key={idx} style={shopeeStyles.tr}>
+                        <td style={shopeeStyles.td}>{op || "—"}</td>
+                        <td style={shopeeStyles.td}><input style={shopeeStyles.tableInput} value={tabelaPrecos[op]?.preco || ""} onChange={(e) => handleInputTabela(op, "preco", e.target.value)} placeholder="0,00" /></td>
+                        <td style={shopeeStyles.td}><input style={shopeeStyles.tableInput} value={tabelaPrecos[op]?.custo || ""} onChange={(e) => handleInputTabela(op, "custo", e.target.value)} placeholder="0,00" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div style={shopeeStyles.footer}>
+              <button style={shopeeStyles.btnCancel} onClick={() => setShowVarModal(false)}>Cancelar</button>
+              <button style={shopeeStyles.btnConfirm} onClick={() => setShowVarModal(false)}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={styles.sidebar}>
         <h3 style={styles.sideTitle}>{editId ? "📝 Editar Produto" : "📦 Novo Produto"}</h3>
-        <input style={styles.input} value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do Produto" />
+        <input style={styles.input} value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do Produto *" />
         
         <div style={{display:'flex', gap:'5px', marginBottom:'10px'}}>
           <select style={{...styles.input, marginBottom:0, flex: 1}} value={categoria} onChange={e => setCategoria(e.target.value)}>
-            <option value="">Categoria...</option>
+            <option value="">Categoria... *</option>
             {listaCategorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
           </select>
           <button onClick={() => setShowCatManager(!showCatManager)} style={styles.btnActionSmall}>⚙️</button>
@@ -223,34 +336,43 @@ export default function CadastroProdutos() {
               <div key={c.id} style={styles.catItem}>
                 <span>{c.nome}</span>
                 <div style={{display:'flex', gap:'4px'}}>
-                  <button onClick={() => {const n=prompt("Novo:",c.nome); if(n && uid) updateDoc(doc(db,"lojistas",uid,"categorias",c.id),{nome:n})}} style={styles.btnMini}>✏️</button>
-                  <button onClick={() => {if(confirm("Exc?") && uid) deleteDoc(doc(db,"lojistas",uid,"categorias",c.id))}} style={styles.btnMini}>❌</button>
+                  <button onClick={() => {
+                    const n = prompt("Novo nome:", c.nome); 
+                    if(n && uid) {
+                      if(!validarTexto(n)) return alert("Nome de categoria não permitido.");
+                      updateDoc(doc(db,"lojistas",uid,"categorias",c.id),{nome:n});
+                    }
+                  }} style={styles.btnMini}>✏️</button>
+                  <button onClick={() => {if(confirm("Deseja excluir a categoria?") && uid) deleteDoc(doc(db,"lojistas",uid,"categorias",c.id))}} style={styles.btnMini}>❌</button>
                 </div>
               </div>
             ))}
-            <button onClick={() => {const n=prompt("Nova:"); if(n && uid) addDoc(collection(db,"lojistas",uid,"categorias"),{nome:n})}} style={styles.btnAddCat}>+ Adicionar</button>
+            <button onClick={() => {
+              const n = prompt("Nome da nova categoria:"); 
+              if(n && uid) {
+                if(!validarTexto(n)) return alert("Nome de categoria não permitido.");
+                addDoc(collection(db,"lojistas",uid,"categorias"),{nome:n});
+              }
+            }} style={styles.btnAddCat}>+ Adicionar</button>
           </div>
         )}
+
+        <button onClick={() => setShowVarModal(true)} style={{...styles.btnUpload, border: '1px solid #ee4d2d', color: '#ee4d2d', fontWeight: 'bold', marginBottom: '10px'}}>
+          {temVariaveisComPreco ? "⚙️ Editar Variações" : "➕ Adicionar Variações"}
+        </button>
 
         <div style={styles.freteBox}>
           <label style={styles.checkLabel}>
             <input type="checkbox" checked={precisaFrete} onChange={e => setPrecisaFrete(e.target.checked)} /> 
             <span>Produto Físico (Frete)</span>
           </label>
-          {!precisaFrete && <p style={{fontSize:'10px', color:'#3b82f6', marginTop:'5px'}}>* Digital: Medidas ignoradas.</p>}
         </div>
 
-        <textarea 
-          style={{...styles.textarea, cursor: 'pointer'}} 
-          value={descricao} 
-          onClick={() => setShowDescModal(true)}
-          readOnly
-          placeholder="Clique para editar a descrição..." 
-        />
+        <textarea style={{...styles.textarea, cursor: 'pointer', border: !descricao.trim() ? '1px solid #fda4af' : '1px solid #e2e8f0'}} value={descricao} onClick={() => setShowDescModal(true)} readOnly placeholder="Descrição obrigatória... *" />
 
-        {precisaFrete && (
+        {precisaFrete ? (
           <div style={styles.boxGray}>
-            <label style={styles.miniLabel}>Medidas Melhor Envio</label>
+            <label style={styles.miniLabel}>Medidas Melhor Envio *</label>
             <div style={styles.grid2}>
               <input style={styles.inputSmall} value={peso} onChange={e => formatInput(e.target.value, setPeso)} placeholder="Peso kg" />
               <input style={styles.inputSmall} value={comprimento} onChange={e => formatInput(e.target.value, setComprimento)} placeholder="Comp cm" />
@@ -258,35 +380,37 @@ export default function CadastroProdutos() {
               <input style={styles.inputSmall} value={altura} onChange={e => formatInput(e.target.value, setAltura)} placeholder="Alt cm" />
             </div>
           </div>
+        ) : (
+          <div style={{...styles.boxGray, background: '#fef2f2', border: '1px solid #fee2e2'}}>
+            <p style={{fontSize: '11px', color: '#b91c1c', margin: 0, fontWeight: 'bold', textAlign: 'center'}}>🚀 Kit Digital: Frete Ignorado</p>
+          </div>
         )}
 
-        <div style={styles.boxGray}>
-          <label style={styles.miniLabel}>Valores R$</label>
+        <div style={{...styles.boxGray, opacity: temVariaveisComPreco ? 0.6 : 1}}>
+          <label style={styles.miniLabel}>Valores R$ {temVariaveisComPreco ? "" : "*"}</label>
           <div style={{display:'flex', gap:'5px'}}>
-            <input style={{...styles.input, marginBottom:0}} value={precoBasico} onChange={e => formatInput(e.target.value, setPrecoBasico)} placeholder="Venda" />
-            <input style={{...styles.input, marginBottom:0}} value={custoUnitario} onChange={e => formatInput(e.target.value, setCustoUnitario)} placeholder="Custo" />
+            <input disabled={temVariaveisComPreco} style={{...styles.input, marginBottom:0, background: temVariaveisComPreco ? '#e2e8f0' : '#fff'}} value={temVariaveisComPreco ? "Variações" : precoBasico} onChange={e => formatInput(e.target.value, setPrecoBasico)} placeholder="Venda" />
+            <input disabled={temVariaveisComPreco} style={{...styles.input, marginBottom:0, background: temVariaveisComPreco ? '#e2e8f0' : '#fff'}} value={temVariaveisComPreco ? "Variações" : custoUnitario} onChange={e => formatInput(e.target.value, setCustoUnitario)} placeholder="Custo" />
           </div>
         </div>
 
         <div style={styles.previewGrid}>
-          {files.map((f, i) => (
-             <img key={'new'+i} src={URL.createObjectURL(f)} style={{...styles.imgThumb, border:'2px solid #3b82f6'}} alt="preview" />
-          ))}
           {imagens.map((img, i) => (
             <div key={'old'+i} style={{position:'relative'}}>
-              <img src={img} style={styles.imgThumb} alt="salva" />
+              {img && <img src={img} style={styles.imgThumb} alt="salva" />}
               <button onClick={() => setImagens(imagens.filter((_, idx) => idx !== i))} style={styles.btnDelImg}>×</button>
             </div>
           ))}
+          {files.map((f, i) => (
+             <img key={'new'+i} src={URL.createObjectURL(f)} style={{...styles.imgThumb, border:'2px solid #3b82f6'}} alt="preview" />
+          ))}
         </div>
 
-        <button style={styles.btnUpload}>
+        <button style={{...styles.btnUpload, borderColor: imagens.length === 0 ? '#fda4af' : '#cbd5e1'}}>
           <input type="file" multiple accept="image/*" onChange={e => setFiles(Array.from(e.target.files || []))} style={styles.fileInvis} />
-          {uploading ? "Salvando..." : "📷 Escolher Fotos (Máx 4)"}
+          {uploading ? "Enviando..." : "📷 Escolher Fotos (Mín 1) *"}
         </button>
-        {files.length > 0 && !uploading && (
-          <button onClick={uploadImagens} style={styles.btnConfirmImgs}>Confirmar {files.length} fotos</button>
-        )}
+        {files.length > 0 && !uploading && <button onClick={uploadImagens} style={styles.btnConfirmImgs}>Confirmar {files.length} fotos</button>}
 
         <button onClick={salvar} style={styles.btnSave}>{loading ? "Aguarde..." : (editId ? "Atualizar" : "Salvar Produto")}</button>
         <button onClick={limparForm} style={styles.btnCancel}>Cancelar / Limpar</button>
@@ -305,12 +429,8 @@ export default function CadastroProdutos() {
               <option value="Visíveis">✅</option>
               <option value="Ocultos">🚫</option>
             </select>
-            <button onClick={() => {setModoMassa(!modoMassa); setSelecionados([]);}} 
-              style={{...styles.btnGeneric, background: modoMassa ? '#3b82f6' : '#fff', color: modoMassa ? '#fff' : '#3b82f6'}}>
-              {modoMassa ? "Sair" : "Massa"}
-            </button>
+            <button onClick={() => {setModoMassa(!modoMassa); setSelecionados([]);}} style={{...styles.btnGeneric, background: modoMassa ? '#3b82f6' : '#fff', color: modoMassa ? '#fff' : '#3b82f6'}}>{modoMassa ? "Sair" : "Massa"}</button>
           </div>
-
           {modoMassa && (
             <div style={styles.massPanel}>
               <span style={{fontSize:'12px', fontWeight:'bold'}}>{selecionados.length} selecionados</span>
@@ -330,10 +450,9 @@ export default function CadastroProdutos() {
             return (
               <div key={p.id} style={{...styles.card, opacity: p.ativo ? 1 : 0.6}}>
                 {p.destaque && <span style={styles.starBadge}>⭐</span>}
-                {modoMassa && (
-                  <input type="checkbox" style={styles.cardCheck} checked={selecionados.includes(p.id)} onChange={e => e.target.checked ? setSelecionados([...selecionados, p.id]) : setSelecionados(selecionados.filter(id => id !== p.id))} />
-                )}
-                <img src={p.capa} style={styles.cardImg} alt="capa" />
+                {modoMassa && <input type="checkbox" style={styles.cardCheck} checked={selecionados.includes(p.id)} onChange={e => e.target.checked ? setSelecionados([...selecionados, p.id]) : setSelecionados(selecionados.filter(id => id !== p.id))} />}
+                {p.capa ? <img src={p.capa} style={styles.cardImg} alt="capa" /> : <div style={{...styles.cardImg, background:'#e2e8f0', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'10px', color:'#94a3b8'}}>Sem Foto</div>}
+
                 <div style={styles.cardBody}>
                   <h4 style={styles.cardTitle}>{p.nome}</h4>
                   <div style={{display:'flex', alignItems:'center', gap:'5px', marginBottom:'4px'}}>
@@ -343,18 +462,11 @@ export default function CadastroProdutos() {
                   <div style={styles.cardActions}>
                     <button onClick={() => uid && updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {destaque: !p.destaque})} style={styles.btnSlim}>{p.destaque ? "⭐ Destacado" : "☆ Destacar"}</button>
                     <button onClick={() => {
-                      setEditId(p.id); 
-                      setNome(p.nome); 
-                      setCategoria(p.categoria || "");
-                      setPrecoBasico(p.precoBasico || ""); 
-                      setCustoUnitario(p.custoUnitario || ""); 
-                      setImagens(p.imagens || []); 
-                      setPrecisaFrete(p.precisaFrete); 
-                      setDescricao(p.descricao || "");
-                      setPeso(p.peso || "");
-                      setComprimento(p.comprimento || "");
-                      setLargura(p.largura || "");
-                      setAltura(p.altura || "");
+                      setEditId(p.id); setNome(p.nome); setCategoria(p.categoria || ""); setPrecoBasico(p.precoBasico || ""); setCustoUnitario(p.custoUnitario || ""); setImagens(p.imagens || []); 
+                      setPrecisaFrete(p.precisaFrete ?? true); setDescricao(p.descricao || ""); setPeso(p.peso || ""); setComprimento(p.comprimento || ""); setLargura(p.largura || ""); setAltura(p.altura || "");
+                      setOpcoes(p.variacoes?.length > 0 ? p.variacoes.map((v:any) => v.nome) : ["Azul", "Rosa"]); setNomeVariacao(p.nomeVariacaoPrincipal || "Cor");
+                      const tab: any = {}; p.variacoes?.forEach((v: any) => { tab[v.nome] = { preco: v.preco, custo: v.custo }; });
+                      setTabelaPrecos(tab);
                     }} style={styles.btnSlim}>✏️ Editar</button>
                     <button onClick={() => uid && updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {ativo: !p.ativo})} style={styles.btnSlim}>{p.ativo ? "🚫 Ocultar" : "👁️ Mostrar"}</button>
                     <button onClick={() => {if(confirm("Excluir?") && uid) deleteDoc(doc(db,"lojistas",uid,"produtos",p.id))}} style={{...styles.btnSlim, color:'#ef4444'}}>🗑️ Excluir</button>
@@ -369,13 +481,13 @@ export default function CadastroProdutos() {
   );
 }
 
-// OBJETO DE ESTILOS (Garante que 'styles' esteja definido)
+// OS STYLES CONTINUAM EXATAMENTE IGUAIS AO SEU CÓDIGO ORIGINAL...
 const styles: { [key: string]: React.CSSProperties } = {
   page: { display: 'flex', height: '100vh', width: '100%', maxWidth: '100vw', background: '#f8fafc', overflow: 'hidden', boxSizing: 'border-box', position: 'relative' },
   modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   modalContent: { background: '#fff', padding: '20px', borderRadius: '12px', width: '80%', maxWidth: '600px', height: '70vh', display: 'flex', flexDirection: 'column' },
   modalTextarea: { flex: 1, padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '14px', resize: 'none', lineHeight: '1.5' },
-  sidebar: { width: '260px', minWidth: '260px', background: '#fff', padding: '15px', overflowY: 'auto', borderRight: '1px solid #e2e8f0', boxSizing: 'border-box' },
+  sidebar: { width: '260px', minWidth: '260px', maxWidth: '260px', background: '#fff', padding: '15px', overflowY: 'auto', borderRight: '1px solid #e2e8f0', boxSizing: 'border-box' },
   main: { flex: 1, padding: '15px', overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box' },
   topHeader: { display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px', width: '100%', boxSizing: 'border-box' },
   filterRow: { display: 'flex', gap: '5px', alignItems: 'center', width: '100%', boxSizing: 'border-box' },
@@ -418,4 +530,33 @@ const styles: { [key: string]: React.CSSProperties } = {
   btnAddCat: { width: '100%', padding: '5px', fontSize: '10px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' },
   btnActionSmall: { padding: '10px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' },
   btnMini: { border: 'none', background: 'none', cursor: 'pointer', fontSize: '10px' }
+};
+
+const shopeeStyles: { [key: string]: React.CSSProperties } = {
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 },
+  modal: { background: '#fff', width: '700px', borderRadius: '4px', overflow: 'hidden' },
+  header: { padding: '16px 20px', borderBottom: '1px solid #efefef', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  title: { margin: 0, fontSize: '18px', fontWeight: 500 },
+  closeBtn: { border: 'none', background: 'none', fontSize: '20px', cursor: 'pointer' },
+  content: { padding: '20px', backgroundColor: '#fafafa', maxHeight: '70vh', overflowY: 'auto' },
+  section: { marginBottom: '24px' },
+  label: { display: 'block', marginBottom: '12px', fontWeight: 'bold', fontSize: '14px' },
+  varBox: { background: '#fff', padding: '16px', border: '1px solid #e5e5e5' },
+  inputGroup: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' },
+  input: { border: '1px solid #ddd', padding: '8px', width: '200px' },
+  optionsGrid: { display: 'flex', gap: '10px' },
+  tagsContainer: { display: 'flex', flexWrap: 'wrap', gap: '8px', flex: 1 },
+  tagInputWrapper: { display: 'flex', alignItems: 'center', border: '1px solid #ddd' },
+  tagInput: { border: 'none', padding: '6px 10px', width: '100px' },
+  delTag: { border: 'none', background: '#f5f5f5', padding: '6px 8px', cursor: 'pointer' },
+  addBtn: { border: '1px dashed #ee4d2d', color: '#ee4d2d', background: '#fff', padding: '6px 12px', cursor: 'pointer' },
+  table: { width: '100%', borderCollapse: 'collapse', background: '#fff' },
+  trHead: { background: '#f6f6f6' },
+  th: { padding: '12px', textAlign: 'left', borderBottom: '1px solid #e5e5e5' },
+  tr: { borderBottom: '1px solid #eee' },
+  td: { padding: '10px 12px' },
+  tableInput: { width: '100%', padding: '8px', border: '1px solid #ddd' },
+  footer: { padding: '16px 20px', display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #efefef' },
+  btnCancel: { padding: '8px 20px', border: '1px solid #ddd', background: '#fff', cursor: 'pointer' },
+  btnConfirm: { padding: '8px 20px', border: 'none', background: '#ee4d2d', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }
 };

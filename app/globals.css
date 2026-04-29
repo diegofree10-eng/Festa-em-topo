@@ -1,3 +1,4 @@
+/* Reset padrão */
 * {
   margin: 0;
   padding: 0;
@@ -5,12 +6,50 @@
 }
 
 body {
-  font-family: Arial, sans-serif;
+  font-family: 'Inter', Arial, sans-serif; /* Adicionei Inter para um ar mais moderno */
   background: #f5f5f5;
-  img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  color: #1e293b;
+  overflow-x: hidden;
+}
+
+/* Ajuste global para imagens */
+img {
+  max-width: 100%;
+  height: auto;
   display: block;
 }
+
+/* ANIMAÇÃO DO LOADER (Obrigatório para o AdminLayout)
+   Isso faz com que o círculo de "Protegendo acesso" gire.
+*/
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Classe utilitária caso você precise em outros lugares */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Opcional: Melhorar a aparência do scrollbar no Admin */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }

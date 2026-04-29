@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import dynamic from 'next/dynamic'; // Necessário para bloquear o SSR
+import dynamic from 'next/dynamic';
 import { useRouter } from "next/navigation";
 import { auth, db } from "@/lib/firebase"; 
 import { doc, getDoc } from "firebase/firestore";
@@ -13,7 +13,11 @@ import Produtos from "./produtos/page";
 import MobileLayout from "./produtos/MobileLayout";
 import AdminConfig from "./config/page"; 
 
-// 1. Mudamos o nome da função para AdminContent
+// --- NOVO COMPONENTE ---
+// Recomendo criar este componente em um arquivo separado depois, 
+// mas por enquanto vamos integrá-lo aqui.
+import GestaoGeral from "./components/GestaoGeral"; 
+
 function AdminContent() {
   const [telaAtiva, setTelaAtiva] = useState('dash');
   const [isMobile, setIsMobile] = useState(null);
@@ -30,10 +34,13 @@ function AdminContent() {
       if (!user) {
         router.replace("/login");
       } else {
-        const docSnap = await getDoc(doc(db, "lojistas", user.uid));
+        const docRef = doc(db, "lojistas", user.uid);
+        const docSnap = await getDoc(docRef);
+        
         if (docSnap.exists()) {
-          setUserRole(docSnap.data().role);
-          setPodeVer(true); // Só libera a tela aqui
+          const role = docSnap.data().role;
+          setUserRole(role);
+          setPodeVer(true);
         } else {
           router.replace("/login");
         }
@@ -46,33 +53,45 @@ function AdminContent() {
     };
   }, [router]);
 
-  // Se não estiver confirmado, a tela fica TOTALMENTE vazia (Preta/Branca)
-  // Isso impede que qualquer menu ou botão apareça via URL
+  // Bloqueio de segurança visual
   if (!podeVer || isMobile === null) {
     return <div style={{ height: '100vh', background: '#0f172a' }} />;
   }
 
+  // Layout Mobile (Lojista)
   if (isMobile) {
     return <MobileLayout telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} />;
   }
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
-      <Sidebar telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} userRole={userRole} />
+      {/* O Sidebar já recebe o userRole para mostrar ou esconder o botão Master */}
+      <Sidebar 
+        telaAtiva={telaAtiva} 
+        setTelaAtiva={setTelaAtiva} 
+        userRole={userRole} 
+      />
+
       <main style={{ flex: 1, overflowY: "auto" }}>
+        {/* Telas do Lojista Comum */}
         {telaAtiva === 'dash' && <DashboardGestao />}
         {telaAtiva === 'produtos' && <Produtos />}
         {telaAtiva === 'config' && <AdminConfig />}
-        {telaAtiva === 'gestao-geral' && (
-          <div style={{ padding: '40px' }}><h2>Painel Master</h2></div>
+
+        {/* --- TELA GESTÃO GERAL (MASTER ONLY) --- */}
+        {telaAtiva === 'gestao-geral' && userRole === 'master' && (
+          <GestaoGeral />
+        )}
+        
+        {/* Caso um espertinho tente mudar o estado via console sem ser master */}
+        {telaAtiva === 'gestao-geral' && userRole !== 'master' && (
+          <div style={{ padding: '40px' }}>Acesso Negado</div>
         )}
       </main>
     </div>
   );
 }
 
-// 2. O PULO DO GATO: Exportamos com SSR desativado
-// Isso impede o Next.js de carregar a página "por trás" sem permissão
 export default dynamic(() => Promise.resolve(AdminContent), { 
   ssr: false,
   loading: () => <div style={{ height: '100vh', background: '#0f172a' }} />

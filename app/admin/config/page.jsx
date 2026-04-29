@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { db, auth, storage } from "@/lib/firebase"; 
-import { doc, setDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, onSnapshot, collection, query, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -9,17 +9,17 @@ export default function AdminConfig() {
   const [uid, setUid] = useState(null);
   const [config, setConfig] = useState({
     nomeLoja: "",
+    slug: "", // Novo campo para o link da loja
+    cpfResponsavel: "", // Novo campo para validação
     emailLoja: "",
     instagram: "",
     whatsapp: "",
-    // Endereço
     cep: "",
     rua: "",
     numero: "",
     bairro: "",
     cidade: "",
     estado: "",
-    // Financeiro/Logística
     chavePix: "",
     freteFixo: "0,00",
     tokenMelhorEnvio: "",
@@ -32,6 +32,29 @@ export default function AdminConfig() {
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [novaLogo, setNovaLogo] = useState(null);
+  const [isSlugAvailable, setIsSlugAvailable] = useState(true);
+
+  // --- FUNÇÕES DE UTILIDADE ---
+
+  const gerarSlug = (text) => {
+    return text
+      .toString()
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/[^\w-]+/g, '')
+      .replace(/--+/g, '-');
+  };
+
+  const validarCPF = (cpf) => {
+    cpf = cpf.replace(/[^\d]+/g, '');
+    if (cpf.length !== 11 || !!cpf.match(/(\d)\1{10}/)) return false;
+    let cpfs = cpf.split('').map(el => +el);
+    const rest = (count) => (cpfs.slice(0, count - 12).reduce((s, a, i) => s + a * (count - i), 0) * 10) % 11 % 10;
+    return rest(10) === cpfs[9] && rest(11) === cpfs[10];
+  };
 
   const formatMoneyInput = (value) => {
     let v = value.replace(/\D/g, "");
@@ -39,6 +62,27 @@ export default function AdminConfig() {
     return v.replace(".", ",");
   };
 
+  // --- MONITORAMENTO DE SLUG (LINK) ---
+  useEffect(() => {
+    const verificarLink = async () => {
+      if (!config.nomeLoja) return;
+      const novoSlug = gerarSlug(config.nomeLoja);
+      setConfig(prev => ({ ...prev, slug: novoSlug }));
+
+      if (novoSlug) {
+        const q = query(collection(db, "lojistas"), where("slug", "==", novoSlug));
+        const snap = await getDocs(q);
+        // Disponível se estiver vazio ou se o slug já pertencer a este UID
+        const disponivel = snap.empty || snap.docs.every(d => d.id === uid);
+        setIsSlugAvailable(disponivel);
+      }
+    };
+
+    const timer = setTimeout(verificarLink, 600);
+    return () => clearTimeout(timer);
+  }, [config.nomeLoja, uid]);
+
+  // --- CARREGAMENTO DE DADOS ---
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -51,7 +95,6 @@ export default function AdminConfig() {
               ...prev,
               ...dados,
               freteFixo: dados.frete ? ((dados.frete / 100).toFixed(2).replace(".", ",")) : "0,00",
-              // Garante que se não houver dados no banco, os campos fiquem vazios para mostrar o placeholder
               mercadoPago: dados.mercadoPago || { publicKey: "", accessToken: "", ativo: false },
               transportadoras: dados.transportadoras || { correios: true, jadlog: true, azul: true, latam: true }
             }));
@@ -66,6 +109,9 @@ export default function AdminConfig() {
 
   async function handleSalvar() {
     if (!uid) return;
+    if (!validarCPF(config.cpfResponsavel)) return alert("CPF Inválido!");
+    if (!isSlugAvailable) return alert("Este link de loja já está em uso!");
+
     setSalvando(true);
     
     let urlFinalLogo = config.logoUrl;
@@ -93,6 +139,20 @@ export default function AdminConfig() {
     setSalvando(false);
   }
 
+  // --- ESTILOS DINÂMICOS ---
+  const originalStyles = {
+    section: { marginBottom: "30px", paddingBottom: "20px", borderBottom: "1px solid #f1f5f9" },
+    bannerLink: {
+        marginTop: '10px',
+        padding: '12px',
+        borderRadius: '10px',
+        fontSize: '13px',
+        backgroundColor: isSlugAvailable ? '#ecfdf5' : '#fef2f2',
+        color: isSlugAvailable ? '#065f46' : '#991b1b',
+        border: `1px solid ${isSlugAvailable ? '#10b981' : '#ef4444'}`
+    }
+  };
+
   if (loading) return <div style={styles.center}>Carregando configurações...</div>;
 
   return (
@@ -101,7 +161,7 @@ export default function AdminConfig() {
         <h2 style={{fontSize: '22px', marginBottom: '20px', color: '#1e293b'}}>⚙️ Configurações Gerais</h2>
 
         {/* IDENTIDADE VISUAL */}
-        <section style={styles.section}>
+        <section style={originalStyles.section}>
           <h3 style={styles.h3}>Identidade da Loja</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '15px' }}>
             <div style={styles.previewLogo}>
@@ -118,12 +178,33 @@ export default function AdminConfig() {
             <div style={{flex: 1}}>
                 <label style={styles.label}>Nome da Loja</label>
                 <input type="text" placeholder="Ex: Minha Loja de Festas" value={config.nomeLoja} onChange={e => setConfig({...config, nomeLoja: e.target.value})} style={styles.input} />
+                
+                {/* Visualização do Link em Tempo Real */}
+                {config.nomeLoja && (
+                    <div style={originalStyles.bannerLink}>
+                        <strong>Link da sua loja:</strong> internal-app.com/{config.slug}
+                        <br/>
+                        <span>{isSlugAvailable ? "✅ Link disponível" : "❌ Este link já pertence a outra loja"}</span>
+                    </div>
+                )}
+            </div>
+          </div>
+        </section>
+
+        {/* DADOS DO RESPONSÁVEL */}
+        <section style={originalStyles.section}>
+          <h3 style={styles.h3}>Dados Legais</h3>
+          <div style={styles.inputRow}>
+            <div style={{flex: 1}}>
+                <label style={styles.label}>CPF do Responsável (Apenas números)</label>
+                <input type="text" placeholder="000.000.000-00" value={config.cpfResponsavel} onChange={e => setConfig({...config, cpfResponsavel: e.target.value})} style={{...styles.input, borderColor: config.cpfResponsavel && !validarCPF(config.cpfResponsavel) ? 'red' : '#e2e8f0'}} />
+                {config.cpfResponsavel && !validarCPF(config.cpfResponsavel) && <small style={{color: 'red'}}>CPF Inválido</small>}
             </div>
           </div>
         </section>
 
         {/* CONTATO E REDES */}
-        <section style={styles.section}>
+        <section style={originalStyles.section}>
           <h3 style={styles.h3}>Contato e Redes Sociais</h3>
           <div style={styles.inputRow}>
             <div style={{flex: 1}}>
@@ -148,7 +229,7 @@ export default function AdminConfig() {
         </section>
 
         {/* ENDEREÇO COMPLETO */}
-        <section style={styles.section}>
+        <section style={originalStyles.section}>
           <h3 style={styles.h3}>Endereço da Loja (Origem do Frete)</h3>
           <div style={styles.inputRow}>
             <div style={{width: '140px'}}>
@@ -187,7 +268,7 @@ export default function AdminConfig() {
         </section>
 
         {/* MERCADO PAGO */}
-        <section style={{...styles.section, borderLeft: '4px solid #009ee3', paddingLeft: '15px', background: '#f0f9ff', padding: '15px', borderRadius: '0 12px 12px 0'}}>
+        <section style={{...originalStyles.section, borderLeft: '4px solid #009ee3', paddingLeft: '15px', background: '#f0f9ff', padding: '15px', borderRadius: '0 12px 12px 0', borderBottom: 'none'}}>
           <h3 style={{...styles.h3, color: '#009ee3', marginTop: 0}}>Integração Mercado Pago</h3>
           <div style={{marginBottom: '10px'}}>
             <label style={styles.checkLabel}>
@@ -210,7 +291,7 @@ export default function AdminConfig() {
         </section>
 
         {/* MELHOR ENVIO */}
-        <section style={{...styles.section, borderLeft: '4px solid #2563eb', paddingLeft: '15px', marginTop: '20px'}}>
+        <section style={{...originalStyles.section, borderLeft: '4px solid #2563eb', paddingLeft: '15px', marginTop: '20px'}}>
           <h3 style={{...styles.h3, color: '#2563eb'}}>Integração Melhor Envio</h3>
           <div style={styles.inputRow}>
             <div style={{flex: 1}}>
@@ -230,7 +311,7 @@ export default function AdminConfig() {
         </section>
 
         {/* STATUS DA LOJA */}
-        <section style={{...styles.section, border: 'none'}}>
+        <section style={{...originalStyles.section, border: 'none'}}>
           <label style={styles.label}>Situação Atual do Catálogo</label>
           <select value={config.lojaAberta} onChange={(e) => setConfig({...config, lojaAberta: e.target.value === "true"})} style={{...styles.input, marginTop: '5px', fontWeight: 'bold'}}>
             <option value="true">🟢 LOJA ABERTA (Receber Pedidos)</option>
@@ -238,7 +319,11 @@ export default function AdminConfig() {
           </select>
         </section>
 
-        <button onClick={handleSalvar} disabled={salvando} style={salvando ? styles.btnDisabled : styles.btnSalvar}>
+        <button 
+            onClick={handleSalvar} 
+            disabled={salvando || !isSlugAvailable || (config.cpfResponsavel && !validarCPF(config.cpfResponsavel))} 
+            style={salvando || !isSlugAvailable ? styles.btnDisabled : styles.btnSalvar}
+        >
           {salvando ? "Processando..." : "💾 Salvar Configurações da Loja"}
         </button>
       </div>
@@ -249,7 +334,6 @@ export default function AdminConfig() {
 const styles = {
   page: { padding: "40px 20px", background: "#f8fafc", minHeight: "100vh", display: "flex", justifyContent: "center" },
   card: { background: "#fff", padding: "35px", borderRadius: "24px", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)", width: "100%", maxWidth: "700px", height: 'fit-content' },
-  section: { marginBottom: "30px", paddingBottom: "20px", borderBottom: "1px solid #f1f5f9" },
   h3: { fontSize: "14px", fontWeight: "800", color: "#475569", marginBottom: "15px", textTransform: 'uppercase', letterSpacing: '0.5px' },
   label: { fontSize: "12px", fontWeight: "600", color: "#64748b", marginBottom: "4px", display: 'block' },
   inputRow: { display: 'flex', gap: '15px', alignItems: 'flex-start' },

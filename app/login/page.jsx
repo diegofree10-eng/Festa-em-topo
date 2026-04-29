@@ -10,14 +10,24 @@ import {
 import { doc, setDoc, collection, addDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 
+// --- CONFIGURAÇÃO DE SEGURANÇA ---
+const PALAVRAS_PROIBIDAS = [
+  "admin", "master", "suporte", "festaemtopo", "root", "null", 
+  "undefined", "api", "vendas", "financeiro", "ajuda", "config",
+  "sistema", "login", "auth", "teste", "gerente"
+];
+
 export default function AuthPage() {
-  // --- LÓGICA (A que criei agora) ---
-  const [isLogin, setIsLogin] = useState(true); // Controla se mostra Login ou Cadastro
+  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [nomeLoja, setNomeLoja] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  const setAuthCookie = () => {
+    document.cookie = `session=true; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax; Secure`;
+  };
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -27,20 +37,44 @@ export default function AuthPage() {
       if (isLogin) {
         // LÓGICA DE LOGIN
         await signInWithEmailAndPassword(auth, email, senha);
+        setAuthCookie(); 
         router.push("/admin");
       } else {
-        // LÓGICA DE CADASTRO
+        // --- LÓGICA DE CADASTRO COM PROTEÇÃO ---
+        
+        // 1. Validação de Palavras Proibidas
+        const nomeParaCheck = nomeLoja.trim().toLowerCase();
+        const temPalavraProibida = PALAVRAS_PROIBIDAS.some(palavra => 
+          nomeParaCheck.includes(palavra)
+        );
+
+        if (temPalavraProibida) {
+          alert("Por motivos de segurança, o nome da loja não pode conter termos reservados (como 'admin', 'suporte' ou 'festaemtopo').");
+          setLoading(false);
+          return;
+        }
+
+        // 2. Validação de Caracteres Especiais (Apenas letras, números e espaços)
+        const regexNomeValido = /^[a-zA-Z0-9À-ÿ ]+$/;
+        if (!regexNomeValido.test(nomeLoja)) {
+          alert("O nome da loja deve conter apenas letras e números, sem símbolos especiais.");
+          setLoading(false);
+          return;
+        }
+
+        // 3. Validação de Senha
         if (senha.length < 6) {
           alert("A senha precisa ter no mínimo 6 caracteres.");
           setLoading(false);
           return;
         }
+
         const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
         const user = userCredential.user;
 
         // Cria o documento do lojista no Firestore
         await setDoc(doc(db, "lojistas", user.uid), {
-          nomeLoja: nomeLoja,
+          nomeLoja: nomeLoja.trim(),
           email: email,
           dataCadastro: Date.now(),
           plano: "Bronze",
@@ -48,18 +82,31 @@ export default function AuthPage() {
           role: "lojista"
         });
 
-        // Cria uma categoria padrão
         const catRef = collection(db, "lojistas", user.uid, "categorias");
         await addDoc(catRef, { nome: "Geral" });
 
         alert(`🎉 Loja "${nomeLoja}" criada com sucesso! Faça login para acessar.`);
-        setIsLogin(true); // Após criar, volta para o login
-        setEmail(""); // Limpa o e-mail para o login
-        setSenha(""); // Limpa a senha para o login
+        setIsLogin(true);
+        setEmail(""); 
+        setSenha(""); 
+        setNomeLoja("");
       }
     } catch (error) {
-      console.error(error);
-      alert("Erro na operação: " + error.message);
+      console.error("Erro completo:", error);
+      
+      if (error.code === 'auth/invalid-credential') {
+        alert("E-mail ou senha incorretos. Verifique os dados e tente novamente.");
+      } else if (error.code === 'auth/user-disabled') {
+        alert("Esta conta foi desativada pelo administrador.");
+      } else if (error.code === 'auth/email-already-in-use') {
+        alert("Este e-mail já está cadastrado em outra loja.");
+      } else if (error.code === 'auth/weak-password') {
+        alert("Senha muito fraca. Tente uma combinação mais complexa.");
+      } else if (error.code === 'auth/too-many-requests') {
+        alert("Muitas tentativas malsucedidas. Tente novamente em alguns minutos.");
+      } else {
+        alert("Ops! Ocorreu um erro: " + error.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -78,10 +125,8 @@ export default function AuthPage() {
     }
   };
 
-  // --- VISUAL (Estrutura Antiga + Estilo Novo) ---
   return (
     <div style={styles.container}>
-      {/* BANNER FIXO ESQUERDO (A base de antes) */}
       <div style={styles.banner}>
         <div style={styles.logoCircle}>G</div>
         <h1 style={styles.bannerTitle}>Gestão Administrativa</h1>
@@ -91,7 +136,6 @@ export default function AuthPage() {
         <div style={styles.bannerDecoration}></div>
       </div>
 
-      {/* CAIXA DE LOGIN/CADASTRO DIREITA (A base de antes) */}
       <div style={styles.loginArea}>
         <form onSubmit={handleAuth} style={styles.card}>
           <div style={styles.header}>
@@ -153,7 +197,7 @@ export default function AuthPage() {
             disabled={loading} 
             style={{ 
               ...styles.btn, 
-              background: loading ? '#cbd5e1' : '#2ecc71', // VERDE
+              background: loading ? '#cbd5e1' : '#2ecc71',
               cursor: loading ? 'not-allowed' : 'pointer'
             }}
           >
@@ -165,7 +209,7 @@ export default function AuthPage() {
               type="button" 
               onClick={() => {
                 setIsLogin(!isLogin);
-                setNomeLoja(""); // Limpa o nome da loja ao alternar
+                setNomeLoja("");
               }} 
               style={{ ...styles.btnLink, textDecoration: 'none', fontWeight: 'bold' }}
             >
@@ -178,102 +222,19 @@ export default function AuthPage() {
   );
 }
 
-// --- ESTILOS ---
 const styles = {
-  container: { 
-    display: 'flex', 
-    height: '100vh', 
-    width: '100vw',
-    overflow: 'hidden',
-    background: '#f0f2f5' 
-  },
-  // Estilo do Banner (Esquerda)
-  banner: { 
-    flex: '0 0 40%', // Ocupa 40% da largura
-    background: '#055bb1', // Azul do sistema
-    color: '#fff',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: '40px',
-    textAlign: 'center',
-    position: 'relative',
-    overflow: 'hidden'
-  },
-  logoCircle: { 
-    width: '60px', 
-    height: '60px', 
-    background: '#2ecc71', // VERDE
-    borderRadius: '15px', 
-    display: 'flex', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    color: '#fff', 
-    fontWeight: 'bold', 
-    fontSize: '28px',
-    marginBottom: '20px',
-    zIndex: 2
-  },
+  container: { display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', background: '#f0f2f5' },
+  banner: { flex: '0 0 40%', background: '#055bb1', color: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '40px', textAlign: 'center', position: 'relative', overflow: 'hidden' },
+  logoCircle: { width: '60px', height: '60px', background: '#2ecc71', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '28px', marginBottom: '20px', zIndex: 2 },
   bannerTitle: { margin: 0, fontSize: '28px', fontWeight: 'bold', zIndex: 2 },
   bannerSubtitle: { fontSize: '16px', color: '#e2e8f0', marginTop: '10px', maxWidth: '300px', zIndex: 2 },
-  bannerDecoration: {
-    position: 'absolute',
-    bottom: '-100px',
-    left: '-100px',
-    width: '400px',
-    height: '400px',
-    background: 'rgba(255,255,255,0.05)',
-    borderRadius: '50%',
-    zIndex: 1
-  },
-  // Estilo da Área de Login (Direita)
-  loginArea: { 
-    flex: '1', // Ocupa o restante da largura
-    display: 'flex', 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    padding: '20px'
-  },
-  card: { 
-    background: '#fff', 
-    padding: '45px', 
-    borderRadius: '20px', 
-    boxShadow: '0 10px 30px rgba(0,0,0,0.08)', 
-    width: '100%', 
-    maxWidth: '420px' 
-  },
+  bannerDecoration: { position: 'absolute', bottom: '-100px', left: '-100px', width: '400px', height: '400px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%', zIndex: 1 },
+  loginArea: { flex: '1', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' },
+  card: { background: '#fff', padding: '45px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)', width: '100%', maxWidth: '420px' },
   header: { textAlign: 'center', marginBottom: '35px' },
   inputGroup: { marginBottom: '20px' },
   label: { display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '8px', color: '#333' },
-  input: { 
-    width: '100%', 
-    padding: '14px', 
-    borderRadius: '10px', 
-    border: '1px solid #e1e1e1', 
-    boxSizing: 'border-box', 
-    fontSize: '16px',
-    transition: '0.2s',
-    outlineColor: '#2ecc71' // Destaque em VERDE
-  },
-  btn: { 
-    width: '100%', 
-    padding: '16px', 
-    color: '#fff', 
-    border: 'none', 
-    borderRadius: '10px', 
-    fontWeight: 'bold', 
-    fontSize: '16px', 
-    transition: '0.2s',
-    marginTop: '10px'
-  },
-  btnLink: { 
-    background: 'none', 
-    border: 'none', 
-    color: '#27ae60', // VERDE escuro
-    fontSize: '13px', 
-    cursor: 'pointer', 
-    textDecoration: 'underline', 
-    padding: 0 
-  }
+  input: { width: '100%', padding: '14px', borderRadius: '10px', border: '1px solid #e1e1e1', boxSizing: 'border-box', fontSize: '16px', outlineColor: '#2ecc71' },
+  btn: { width: '100%', padding: '16px', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '16px', transition: '0.2s', marginTop: '10px' },
+  btnLink: { background: 'none', border: 'none', color: '#27ae60', fontSize: '13px', cursor: 'pointer', textDecoration: 'underline', padding: 0 }
 };
