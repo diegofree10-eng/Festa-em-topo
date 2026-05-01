@@ -3,15 +3,15 @@ import React, { useEffect, useState } from "react";
 import { FiPieChart, FiPackage, FiShoppingCart, FiSettings, FiLogOut, FiShield } from "react-icons/fi";
 import { auth, db } from "@/lib/firebase";
 import { signOut, onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, getDoc } from "firebase/firestore";
 
 interface SidebarProps {
   telaAtiva: string;
   setTelaAtiva: (tela: string) => void;
-  userRole?: string;
 }
 
-export default function Sidebar({ telaAtiva, setTelaAtiva, userRole }: SidebarProps) {
+export default function Sidebar({ telaAtiva, setTelaAtiva }: SidebarProps) {
+  const [role, setRole] = useState<string | null>(null);
   const [dadosLoja, setDadosLoja] = useState({
     nomeLoja: "Carregando...",
     logoUrl: null
@@ -20,29 +20,27 @@ export default function Sidebar({ telaAtiva, setTelaAtiva, userRole }: SidebarPr
   const unsubRef = React.useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const docRef = doc(db, "lojistas", user.uid);
-        unsubRef.current = onSnapshot(docRef, 
-          (docSnap) => {
-            if (docSnap.exists()) {
-              const data = docSnap.data();
-              setDadosLoja({
-                nomeLoja: data.nomeLoja || "Minha Loja", 
-                logoUrl: data.logoUrl || null 
-              });
-            }
-          },
-          (error) => {
-            if (error.code === "permission-denied") return;
-            console.error("Erro ao buscar dados da loja:", error);
-          }
-        );
-      } else {
-        if (unsubRef.current) {
-          unsubRef.current();
-          unsubRef.current = null;
+        // Busca o Role para o botão Master
+        const userDoc = await getDoc(doc(db, "usuarios", user.uid));
+        if (userDoc.exists()) {
+          setRole(userDoc.data().role);
         }
+
+        // Escuta os dados da loja
+        const docRef = doc(db, "lojistas", user.uid);
+        unsubRef.current = onSnapshot(docRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setDadosLoja({
+              nomeLoja: data.nomeLoja || "Minha Loja",
+              logoUrl: data.logoUrl || null
+            });
+          }
+        });
+      } else {
+        if (unsubRef.current) unsubRef.current();
       }
     });
 
@@ -52,37 +50,15 @@ export default function Sidebar({ telaAtiva, setTelaAtiva, userRole }: SidebarPr
     };
   }, []);
 
-  // --- FUNÇÃO DE LOGOUT REFORMULADA ---
   const handleLogout = async () => {
     if (confirm("Deseja realmente sair do sistema?")) {
       try {
-        // 1. Mata as escutas em tempo real do Firestore
-        if (unsubRef.current) {
-          unsubRef.current();
-          unsubRef.current = null;
-        }
-
-        // 2. Destrói a sessão no Firebase (Isso invalida o token no Google)
         await signOut(auth);
-
-        // 3. Limpa TUDO que houver no navegador (Cache, Tokens, States)
         localStorage.clear();
         sessionStorage.clear();
-
-        // 4. Limpa Cookies (Segurança adicional)
-        document.cookie.split(";").forEach((c) => {
-          document.cookie = c
-            .replace(/^ +/, "")
-            .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-        });
-
-        // 5. Redireciona com RECARREGAMENTO TOTAL
-        // window.location.href é melhor que replace para limpar a memória do Next.js
         window.location.href = "/login";
-
       } catch (error) {
         console.error("Erro ao sair:", error);
-        window.location.href = "/login";
       }
     }
   };
@@ -125,7 +101,8 @@ export default function Sidebar({ telaAtiva, setTelaAtiva, userRole }: SidebarPr
           </button>
         ))}
 
-        {userRole === 'master' && (
+        {/* BOTÃO MASTER RESTAURADO COM DESIGN ORIGINAL */}
+        {role === 'master' && (
           <button
             onClick={() => setTelaAtiva('gestao-geral')}
             style={{

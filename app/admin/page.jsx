@@ -6,93 +6,56 @@ import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
-// Importações dos seus componentes
 import Sidebar from "./Sidebar"; 
 import DashboardGestao from "./DashboardGestao"; 
 import Produtos from "./produtos/page"; 
-import MobileLayout from "./produtos/MobileLayout";
+import Pedidos from "./pedidos/page"; 
 import AdminConfig from "./config/page"; 
-
-// --- NOVO COMPONENTE ---
-// Recomendo criar este componente em um arquivo separado depois, 
-// mas por enquanto vamos integrá-lo aqui.
 import GestaoGeral from "./components/GestaoGeral"; 
 
 function AdminContent() {
   const [telaAtiva, setTelaAtiva] = useState('dash');
-  const [isMobile, setIsMobile] = useState(null);
   const [userRole, setUserRole] = useState(null);
-  const [podeVer, setPodeVer] = useState(false);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    const checkDevice = () => setIsMobile(window.innerWidth < 1024);
-    checkDevice();
-    window.addEventListener("resize", checkDevice);
-
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         router.replace("/login");
-      } else {
-        const docRef = doc(db, "lojistas", user.uid);
-        const docSnap = await getDoc(docRef);
+        return;
+      }
+      try {
+        // Busca na coleção 'usuarios' conforme seu Firestore (Imagem 13.png)
+        const userRef = doc(db, "usuarios", user.uid);
+        const userSnap = await getDoc(userRef);
         
-        if (docSnap.exists()) {
-          const role = docSnap.data().role;
-          setUserRole(role);
-          setPodeVer(true);
-        } else {
-          router.replace("/login");
+        if (userSnap.exists()) {
+          setUserRole(userSnap.data().role);
         }
+      } catch (error) {
+        console.error("Erro ao validar acesso:", error);
+      } finally {
+        setLoading(false);
       }
     });
-
-    return () => {
-      window.removeEventListener("resize", checkDevice);
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [router]);
 
-  // Bloqueio de segurança visual
-  if (!podeVer || isMobile === null) {
-    return <div style={{ height: '100vh', background: '#0f172a' }} />;
-  }
-
-  // Layout Mobile (Lojista)
-  if (isMobile) {
-    return <MobileLayout telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} />;
-  }
+  if (loading) return <div style={{background: '#0f172a', height: '100vh'}} />;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
-      {/* O Sidebar já recebe o userRole para mostrar ou esconder o botão Master */}
-      <Sidebar 
-        telaAtiva={telaAtiva} 
-        setTelaAtiva={setTelaAtiva} 
-        userRole={userRole} 
-      />
-
+      <Sidebar telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} />
       <main style={{ flex: 1, overflowY: "auto" }}>
-        {/* Telas do Lojista Comum */}
         {telaAtiva === 'dash' && <DashboardGestao />}
         {telaAtiva === 'produtos' && <Produtos />}
+        {telaAtiva === 'pedidos' && <Pedidos />}
         {telaAtiva === 'config' && <AdminConfig />}
-
-        {/* --- TELA GESTÃO GERAL (MASTER ONLY) --- */}
-        {telaAtiva === 'gestao-geral' && userRole === 'master' && (
-          <GestaoGeral />
-        )}
-        
-        {/* Caso um espertinho tente mudar o estado via console sem ser master */}
-        {telaAtiva === 'gestao-geral' && userRole !== 'master' && (
-          <div style={{ padding: '40px' }}>Acesso Negado</div>
-        )}
+        {telaAtiva === 'gestao-geral' && userRole === 'master' && <GestaoGeral />}
       </main>
     </div>
   );
 }
 
-export default dynamic(() => Promise.resolve(AdminContent), { 
-  ssr: false,
-  loading: () => <div style={{ height: '100vh', background: '#0f172a' }} />
-});
+export default dynamic(() => Promise.resolve(AdminContent), { ssr: false });

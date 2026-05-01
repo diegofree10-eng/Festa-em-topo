@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { db, auth, storage } from "@/lib/firebase"; 
-import { doc, setDoc, onSnapshot, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, setDoc, onSnapshot } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -9,8 +9,8 @@ export default function AdminConfig() {
   const [uid, setUid] = useState(null);
   const [config, setConfig] = useState({
     nomeLoja: "",
-    slug: "", // Novo campo para o link da loja
-    cpfResponsavel: "", // Novo campo para validação
+    slug: "",
+    cpfResponsavel: "",
     emailLoja: "",
     instagram: "",
     whatsapp: "",
@@ -32,21 +32,8 @@ export default function AdminConfig() {
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [novaLogo, setNovaLogo] = useState(null);
-  const [isSlugAvailable, setIsSlugAvailable] = useState(true);
 
   // --- FUNÇÕES DE UTILIDADE ---
-
-  const gerarSlug = (text) => {
-    return text
-      .toString()
-      .toLowerCase()
-      .trim()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/[^\w-]+/g, '')
-      .replace(/--+/g, '-');
-  };
 
   const validarCPF = (cpf) => {
     cpf = cpf.replace(/[^\d]+/g, '');
@@ -61,26 +48,6 @@ export default function AdminConfig() {
     v = (Number(v) / 100).toFixed(2);
     return v.replace(".", ",");
   };
-
-  // --- MONITORAMENTO DE SLUG (LINK) ---
-  useEffect(() => {
-    const verificarLink = async () => {
-      if (!config.nomeLoja) return;
-      const novoSlug = gerarSlug(config.nomeLoja);
-      setConfig(prev => ({ ...prev, slug: novoSlug }));
-
-      if (novoSlug) {
-        const q = query(collection(db, "lojistas"), where("slug", "==", novoSlug));
-        const snap = await getDocs(q);
-        // Disponível se estiver vazio ou se o slug já pertencer a este UID
-        const disponivel = snap.empty || snap.docs.every(d => d.id === uid);
-        setIsSlugAvailable(disponivel);
-      }
-    };
-
-    const timer = setTimeout(verificarLink, 600);
-    return () => clearTimeout(timer);
-  }, [config.nomeLoja, uid]);
 
   // --- CARREGAMENTO DE DADOS ---
   useEffect(() => {
@@ -109,8 +76,7 @@ export default function AdminConfig() {
 
   async function handleSalvar() {
     if (!uid) return;
-    if (!validarCPF(config.cpfResponsavel)) return alert("CPF Inválido!");
-    if (!isSlugAvailable) return alert("Este link de loja já está em uso!");
+    if (config.cpfResponsavel && !validarCPF(config.cpfResponsavel)) return alert("CPF Inválido!");
 
     setSalvando(true);
     
@@ -147,9 +113,9 @@ export default function AdminConfig() {
         padding: '12px',
         borderRadius: '10px',
         fontSize: '13px',
-        backgroundColor: isSlugAvailable ? '#ecfdf5' : '#fef2f2',
-        color: isSlugAvailable ? '#065f46' : '#991b1b',
-        border: `1px solid ${isSlugAvailable ? '#10b981' : '#ef4444'}`
+        backgroundColor: '#f8fafc',
+        color: '#1e293b',
+        border: '1px solid #e2e8f0'
     }
   };
 
@@ -177,16 +143,11 @@ export default function AdminConfig() {
           <div style={styles.inputRow}>
             <div style={{flex: 1}}>
                 <label style={styles.label}>Nome da Loja</label>
-                <input type="text" placeholder="Ex: Minha Loja de Festas" value={config.nomeLoja} onChange={e => setConfig({...config, nomeLoja: e.target.value})} style={styles.input} />
+                <div style={{...styles.input, background: '#f1f5f9', fontWeight: 'bold'}}>{config.nomeLoja}</div>
                 
-                {/* Visualização do Link em Tempo Real */}
-                {config.nomeLoja && (
-                    <div style={originalStyles.bannerLink}>
-                        <strong>Link da sua loja:</strong> internal-app.com/{config.slug}
-                        <br/>
-                        <span>{isSlugAvailable ? "✅ Link disponível" : "❌ Este link já pertence a outra loja"}</span>
-                    </div>
-                )}
+                <div style={originalStyles.bannerLink}>
+                    <strong>Link oficial da sua loja:</strong> internal-app.com/{config.slug}
+                </div>
             </div>
           </div>
         </section>
@@ -321,8 +282,8 @@ export default function AdminConfig() {
 
         <button 
             onClick={handleSalvar} 
-            disabled={salvando || !isSlugAvailable || (config.cpfResponsavel && !validarCPF(config.cpfResponsavel))} 
-            style={salvando || !isSlugAvailable ? styles.btnDisabled : styles.btnSalvar}
+            disabled={salvando || (config.cpfResponsavel && !validarCPF(config.cpfResponsavel))} 
+            style={salvando ? styles.btnDisabled : styles.btnSalvar}
         >
           {salvando ? "Processando..." : "💾 Salvar Configurações da Loja"}
         </button>

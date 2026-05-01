@@ -2,20 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from "firebase/firestore";
-import { useRouter } from "next/navigation";
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, getDoc } from "firebase/firestore";
+import { useRouter, useSearchParams } from "next/navigation";
 
-// --- DEFINIÇÃO DE TIPOS (Interfaces) ---
+// --- INTERFACES ---
 interface ItemPedido {
   nome: string;
   qty: number;
+  preco: number; 
   variacao?: string;
 }
 
-// Interface atualizada com o campo de Endereço
 interface Pedido {
   id: string;
   cliente: string;
+  whatsapp?: string;
   numeroPedido: number;
   status: string;
   pago: boolean;
@@ -27,147 +28,172 @@ interface Pedido {
     bairro: string;
     cidade: string;
     uf: string;
+    cep: string;
   };
   financeiro?: {
     total: number;
+    subtotal?: number;
+    frete?: number;
   };
-  personalizacao?: {
-    nome?: string;
-    idade?: string | number;
-  } | string;
+  personalizacao?: any; 
+  createdAt?: number;
 }
 
 export default function AdminPedidos() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const lojaId = searchParams.get("loja"); 
   
-  const [isLogged, setIsLogged] = useState(false);
-  const [password, setPassword] = useState("");
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState("Todos");
+  const [selecionados, setSelecionados] = useState<string[]>([]);
 
-  function handleLogin() {
-    const SENHA_MESTRE = "1234"; 
-    if (password === SENHA_MESTRE) {
-      setIsLogged(true);
-    } else {
-      alert("Senha incorreta! ❌");
+  // --- FUNÇÃO DE IMPRESSÃO ---
+  const imprimirSelecionados = () => {
+    if (selecionados.length === 0) {
+      alert("Selecione os pedidos na lista para imprimir!");
+      return;
     }
-  }
 
+    const dataAtual = new Date().toLocaleDateString('pt-BR');
+    const pedidosParaImprimir = pedidos.filter(p => selecionados.includes(p.id));
+    const janelaImpressao = window.open('', '', 'width=1000,height=900');
+    
+    if (!janelaImpressao) return;
+
+    janelaImpressao.document.write(`
+      <html>
+        <head>
+          <title>Relatório de Produção - ${dataAtual}</title>
+          <style>
+            @page { size: portrait; margin: 5mm; }
+            body { font-family: sans-serif; font-size: 10px; margin: 0; padding: 5px; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+            th, td { border: 1px solid #000; padding: 0; text-align: left; vertical-align: top; word-wrap: break-word; }
+            th { background-color: #f2f2f2; font-size: 9px; text-transform: uppercase; padding: 6px; }
+            .col-ok { width: 30px; text-align: center; vertical-align: middle; }
+            .col-numero { width: 45px; text-align: center; font-weight: bold; vertical-align: middle; }
+            .col-cliente { width: 180px; padding: 6px; }
+            .row-item { display: flex; border-bottom: 1px solid #000; min-height: 30px; }
+            .item-nome { flex: 1; padding: 6px; border-right: 1px solid #000; }
+            .item-info { width: 90px; padding: 6px; font-size: 9px; }
+            .tag-variacao { color: #b80606; font-weight: bold; font-size: 9px; }
+            h2 { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
+          </style>
+        </head>
+        <body>
+          <h2>Relatório de Produção - ${dataAtual}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th class="col-ok">OK</th>
+                <th class="col-numero">Ped.</th>
+                <th class="col-cliente">Cliente</th>
+                <th class="col-itens">Itens / Variações</th>
+                <th class="col-perso">Personalização</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pedidosParaImprimir.map(p => `
+                <tr>
+                  <td class="col-ok"> [ ] </td>
+                  <td class="col-numero">#${p.numeroPedido}</td>
+                  <td class="col-cliente"><b>${p.cliente}</b></td>
+                  <td colspan="2">
+                    ${p.itens?.map(item => {
+                      let infoPerso = "---";
+                      if (p.personalizacao?.kitFesta?.nome) {
+                        infoPerso = p.personalizacao.kitFesta.nome + " / " + p.personalizacao.kitFesta.idade;
+                      }
+                      return `
+                        <div class="row-item">
+                          <div class="item-nome">
+                            <b>${item.qty}x</b> ${item.nome} 
+                            ${item.variacao ? '<span class="tag-variacao">(' + item.variacao + ')</span>' : ''}
+                          </div>
+                          <div class="item-info">${infoPerso}</div>
+                        </div>
+                      `;
+                    }).join('')}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <script>window.onload = function() { window.print(); window.close(); };</script>
+        </body>
+      </html>
+    `);
+    janelaImpressao.document.close();
+  };
+
+  // --- FUNÇÕES FIREBASE ---
   useEffect(() => {
-    if (!isLogged) return;
-    const q = query(collection(db, "registros_pedidos"), orderBy("numeroPedido", "desc"));
+    if (!lojaId) return;
+    
+    const q = query(collection(db, "lojistas", lojaId, "registros_pedidos"), orderBy("numeroPedido", "desc"));
     
     const unsub = onSnapshot(q, (snap) => {
-      const lista = snap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Pedido[]; 
-      
+      const lista = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Pedido[]; 
       setPedidos(lista);
       setLoading(false);
     });
     return () => unsub();
-  }, [isLogged]);
+  }, [lojaId]);
 
-  async function confirmarPagamento(id: string, pagoAtual: boolean) {
-    try {
-      const pedidoRef = doc(db, "registros_pedidos", id);
-      await updateDoc(pedidoRef, { pago: !pagoAtual });
-    } catch (e) {
-      alert("Erro ao atualizar pagamento");
-    }
-  }
+  const pedidosFiltrados = pedidos.filter(p => {
+    const matchBusca = p.cliente?.toLowerCase().includes(busca.toLowerCase()) || p.numeroPedido?.toString().includes(busca);
+    const matchStatus = filtroStatus === "Todos" || p.status === filtroStatus;
+    return matchBusca && matchStatus;
+  });
 
-  async function alterarStatus(id: string, statusAtual: string) {
-    const proximosStatus: Record<string, string> = {
-      "Pendente": "Em Produção",
-      "Em Produção": "Concluído",
-      "Concluído": "Pendente"
-    };
-    const novoStatus = proximosStatus[statusAtual] || "Pendente";
-    
-    try {
-      const pedidoRef = doc(db, "registros_pedidos", id);
-      await updateDoc(pedidoRef, { status: novoStatus });
-    } catch (e) {
-      alert("Erro ao atualizar status");
-    }
-  }
+  const toggleSelecao = (id: string) => {
+    setSelecionados(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
 
-  async function apagarPedido(id: string) {
-    if (confirm("Deseja eliminar este registro permanentemente?")) {
-      await deleteDoc(doc(db, "registros_pedidos", id));
-    }
-  }
-
-  const pedidosFiltrados = pedidos.filter(p => 
-    p.cliente?.toLowerCase().includes(busca.toLowerCase()) || 
-    p.numeroPedido?.toString().includes(busca) ||
-    p.endereco?.bairro?.toLowerCase().includes(busca.toLowerCase())
-  );
-
-  if (!isLogged) {
-    return (
-      <div style={styles.loginOverlay}>
-        <div style={styles.loginBox}>
-          <h2>🔐 Relatórios Protegidos</h2>
-          <p style={{fontSize: '14px', color: '#666', marginBottom: '20px'}}>Digite a senha para visualizar as vendas</p>
-          <input 
-            type="password" 
-            placeholder="Senha" 
-            value={password} 
-            onChange={(e) => setPassword(e.target.value)}
-            style={styles.inputLogin}
-            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-          />
-          <button onClick={handleLogin} style={styles.btnGreen}>Acessar Relatórios</button>
-          <button onClick={() => router.push("/admin")} style={styles.btnBackMinimal}>Voltar</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) return <div style={styles.loading}>Carregando relatórios...</div>;
+  const toggleTodos = () => {
+    if (selecionados.length === pedidosFiltrados.length) setSelecionados([]);
+    else setSelecionados(pedidosFiltrados.map(p => p.id));
+  };
 
   return (
-    <div style={styles.page}>
+    <div style={styles.contentArea}>
       <div style={styles.header}>
-        <button onClick={() => router.push("/admin")} style={styles.btnBack}>
-          ⬅ Voltar ao Painel Admin
-        </button>
-        <h1 style={{marginTop: '15px'}}>📊 Gestão de Pedidos</h1>
-      </div>
-
-      <div style={styles.statsRow}>
-        <div style={styles.statCard}>
-          <span style={styles.statLabel}>Pendentes</span>
-          <h2 style={{ color: "#e67e22", margin: '5px 0' }}>
-            {pedidos.filter(p => p.status === "Pendente").length}
-          </h2>
-        </div>
-        <div style={styles.statCard}>
-          <span style={styles.statLabel}>Faturamento Total</span>
-          <h2 style={{ margin: '5px 0' }}>
-            R$ {pedidos.reduce((acc, p) => acc + (p.financeiro?.total || 0), 0).toFixed(2).replace(".", ",")}
-          </h2>
-        </div>
-        <div style={styles.statCard}>
-          <span style={styles.statLabel}>💰 Total Recebido</span>
-          <h2 style={{ color: "#2ecc71", margin: '5px 0' }}>
-            R$ {pedidos.filter(p => p.pago).reduce((acc, p) => acc + (p.financeiro?.total || 0), 0).toFixed(2).replace(".", ",")}
-          </h2>
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+           <h2 style={{fontSize: '20px', color: '#1e293b', margin: 0}}>📋 Gestão de Pedidos</h2>
+           <button 
+             onClick={imprimirSelecionados} 
+             style={{...styles.btnMassPrint, backgroundColor: selecionados.length > 0 ? "#2c3e50" : "#94a3b8"}}
+           >
+             🖨️ Imprimir Selecionados ({selecionados.length})
+           </button>
         </div>
       </div>
 
-      <div style={styles.searchBar}>
+      <div style={styles.filterBar}>
+        <div style={styles.statusTabs}>
+          {["Todos", "Pendente", "Em Produção", "Concluído"].map(status => (
+            <button 
+              key={status} 
+              onClick={() => {setFiltroStatus(status); setSelecionados([]);}} 
+              style={{ 
+                ...styles.tabBtn, 
+                backgroundColor: filtroStatus === status ? "#2c3e50" : "transparent", 
+                color: filtroStatus === status ? "#fff" : "#64748b" 
+              }}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
         <input 
           type="text" 
-          placeholder="🔍 Buscar por cliente, Nº ou bairro..." 
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          style={styles.searchInput}
+          placeholder="🔍 Buscar cliente ou número..." 
+          value={busca} 
+          onChange={(e) => setBusca(e.target.value)} 
+          style={styles.searchInput} 
         />
       </div>
 
@@ -175,11 +201,12 @@ export default function AdminPedidos() {
         <table style={styles.table}>
           <thead style={styles.thead}>
             <tr>
+              <th style={{...styles.th, width: '40px'}}>
+                <input type="checkbox" checked={selecionados.length === pedidosFiltrados.length && pedidosFiltrados.length > 0} onChange={toggleTodos} />
+              </th>
               <th style={styles.th}>Nº</th>
-              <th style={styles.th}>Data</th>
               <th style={styles.th}>Cliente / Endereço</th>
-              <th style={thStyleProdutos}>Produtos / Personalização</th>
-              <th style={styles.th}>Total</th>
+              <th style={styles.th}>Itens / Personalização</th>
               <th style={styles.th}>Ações</th>
             </tr>
           </thead>
@@ -187,78 +214,50 @@ export default function AdminPedidos() {
             {pedidosFiltrados.map((pedido) => (
               <tr key={pedido.id} style={{ 
                 ...styles.tr, 
-                backgroundColor: pedido.status === "Concluído" ? "#f0fff4" : "#fff" 
+                backgroundColor: selecionados.includes(pedido.id) ? "#f0f9ff" : (pedido.pago ? "#f0fdf4" : "#fff") 
               }}>
-                <td style={styles.tdBold}>#{pedido.numeroPedido}</td>
-                <td style={styles.td}>{pedido.data}</td>
                 <td style={styles.td}>
-                  <div style={{fontWeight: 'bold'}}>{pedido.cliente}</div>
-                  {pedido.endereco ? (
-                    <div style={styles.enderecoText}>
-                      📍 {pedido.endereco.rua}, {pedido.endereco.numero}<br/>
-                      🏘️ {pedido.endereco.bairro}<br/>
-                      🏙️ {pedido.endereco.cidade}-{pedido.endereco.uf}
-                    </div>
-                  ) : (
-                    <div style={{color: '#999', fontSize: '11px'}}>Endereço não registrado</div>
-                  )}
+                  <input type="checkbox" checked={selecionados.includes(pedido.id)} onChange={() => toggleSelecao(pedido.id)} />
                 </td>
+                <td style={styles.tdBold}>#{pedido.numeroPedido}</td>
+                
+                <td style={styles.td}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                    <span style={{fontWeight: 'bold'}}>{pedido.cliente}</span>
+                    {pedido.whatsapp && (
+                      <a href={`https://wa.me/55${pedido.whatsapp.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" style={styles.whatsappIcon}>💬</a>
+                    )}
+                  </div>
+                  <div style={styles.enderecoText}>
+                    {pedido.endereco ? `📍 ${pedido.endereco.cidade}/${pedido.endereco.uf}` : "📦 Digital / Retirada"}
+                  </div>
+                </td>
+
                 <td style={styles.td}>
                   {pedido.itens?.map((item, idx) => (
-                    <div key={idx} style={styles.itemContainer}>
-                      <div style={styles.itemLine}><strong>{item.qty}x</strong> {item.nome}</div>
-                      {item.variacao && (
-                        <div style={{
-                          ...styles.badgeVariacao,
-                          backgroundColor: 
-                            item.variacao === "Basico" ? "#e2e8f0" : 
-                            item.variacao === "Completo" ? "#dbeafe" : "#fef3c7"
-                        }}>
-                          ✨ {item.variacao}
-                        </div>
-                      )}
+                    <div key={idx} style={styles.itemLine}>
+                      <strong>{item.qty}x</strong> {item.nome}
                     </div>
                   ))}
+                </td>
 
-                  {pedido.personalizacao && typeof pedido.personalizacao === 'object' && (
-                    <div style={styles.personalizacaoBox}>
-                      <div style={styles.personalizacaoTitle}>🎁 PERSONALIZAÇÃO:</div>
-                      <div style={styles.personalizacaoText}>
-                        <strong>Nome:</strong> {pedido.personalizacao.nome || "Não informado"} <br/>
-                        <strong>Idade:</strong> {pedido.personalizacao.idade || "N/A"}
-                      </div>
-                    </div>
-                  )}
-                </td>
-                <td style={styles.tdTotal}>
-                  R$ {(pedido.financeiro?.total || 0).toFixed(2).replace(".", ",")}
-                </td>
                 <td style={styles.td}>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "8px" }}>
                     <button 
-                      onClick={() => confirmarPagamento(pedido.id, pedido.pago)}
-                      style={{
-                        ...styles.statusBtn,
-                        backgroundColor: pedido.pago ? "#2ecc71" : "#bdc3c7",
-                      }}
+                      onClick={() => updateDoc(doc(db, "lojistas", lojaId!, "registros_pedidos", pedido.id), { pago: !pedido.pago })}
+                      style={{ ...styles.actionBtn, backgroundColor: pedido.pago ? "#2ecc71" : "#e74c3c" }}
                     >
-                      {pedido.pago ? "💰 Pago" : "💵 Confirmar"}
+                      {pedido.pago ? "PAGO" : "PED"}
                     </button>
-
                     <button 
-                      onClick={() => alterarStatus(pedido.id, pedido.status)}
-                      style={{
-                        ...styles.statusBtn,
-                        backgroundColor: 
-                          pedido.status === "Concluído" ? "#3498db" : 
-                          pedido.status === "Em Produção" ? "#9b59b6" : "#e67e22",
+                      onClick={() => {
+                        const proximos: any = {"Pendente":"Em Produção", "Em Produção":"Concluído", "Concluído":"Pendente"};
+                        updateDoc(doc(db, "lojistas", lojaId!, "registros_pedidos", pedido.id), { status: proximos[pedido.status] || "Pendente" });
                       }}
+                      style={{ ...styles.actionBtn, backgroundColor: "#94a3b8" }}
                     >
-                      {pedido.status === "Concluído" ? "✓ OK" : 
-                       pedido.status === "Em Produção" ? "🛠️ Prod" : "⏳ Pend"}
+                      {pedido.status}
                     </button>
-
-                    <button onClick={() => apagarPedido(pedido.id)} style={styles.deleteBtn}>🗑️</button>
                   </div>
                 </td>
               </tr>
@@ -270,43 +269,23 @@ export default function AdminPedidos() {
   );
 }
 
-const thStyleProdutos: React.CSSProperties = {
-  padding: "15px", 
-  fontSize: "12px", 
-  textTransform: "uppercase",
-  minWidth: "200px"
-};
-
 const styles: { [key: string]: React.CSSProperties } = {
-  loginOverlay: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", background: "#f0f2f5" },
-  loginBox: { background: "#fff", padding: "40px", borderRadius: "16px", boxShadow: "0 10px 25px rgba(0,0,0,0.1)", textAlign: "center", width: "90%", maxWidth: "320px" },
-  inputLogin: { width: "100%", padding: "12px", marginBottom: "15px", borderRadius: "8px", border: "1px solid #ddd", boxSizing: "border-box" },
-  btnBack: { padding: "10px 15px", background: "#3498db", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "bold" },
-  btnBackMinimal: { marginTop: "15px", background: "none", border: "none", color: "#666", cursor: "pointer", textDecoration: "underline", display: 'block', width: '100%' },
-  btnGreen: { background: "#2ecc71", color: "#fff", padding: "12px", borderRadius: "8px", border: "none", cursor: "pointer", width: "100%", fontWeight: "bold" },
-  page: { padding: "15px", background: "#f8f9fa", minHeight: "100vh", fontFamily: "sans-serif" },
+  contentArea: { padding: "10px", width: "100%", boxSizing: "border-box" },
   header: { marginBottom: "20px" },
-  loading: { display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", color: "#64748b" },
-  statsRow: { display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: "20px" },
-  statCard: { background: "#fff", padding: "15px", borderRadius: "12px", flex: "1 1 150px", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" },
-  statLabel: { fontSize: "12px", color: "#64748b", fontWeight: "bold" },
-  searchBar: { marginBottom: "20px" },
-  searchInput: { width: "100%", maxWidth: "400px", padding: "12px 20px", borderRadius: "25px", border: "1px solid #cbd5e1", outline: "none", fontSize: "14px", boxSizing: "border-box" },
-  tableContainer: { background: "#fff", borderRadius: "12px", overflowX: "auto", boxShadow: "0 4px 20px rgba(0,0,0,0.08)" },
-  table: { width: "100%", borderCollapse: "collapse", textAlign: "left", minWidth: "1000px" }, 
-  thead: { background: "#2c3e50", color: "#fff" },
-  th: { padding: "15px", fontSize: "12px", textTransform: "uppercase" },
-  tr: { borderBottom: "1px solid #eee" },
-  td: { padding: "15px", fontSize: "14px", color: "#444", verticalAlign: 'top' },
-  tdBold: { padding: "15px", fontWeight: "bold", color: "#2c3e50" },
-  tdTotal: { padding: "15px", fontWeight: "bold", color: "#2ecc71" },
-  enderecoText: { fontSize: '12px', color: '#666', marginTop: '5px', lineHeight: '1.4' },
-  itemContainer: { marginBottom: "8px" },
-  itemLine: { fontSize: "13px" },
-  badgeVariacao: { display: "inline-block", fontSize: "10px", fontWeight: "bold", padding: "2px 8px", borderRadius: "10px", marginTop: "4px" },
-  personalizacaoBox: { marginTop: "10px", padding: "8px", background: "#fff9db", borderRadius: "8px", border: "1px dashed #f1c40f" },
-  personalizacaoTitle: { fontSize: "10px", fontWeight: "bold", color: "#856404" },
-  personalizacaoText: { fontSize: "12px", color: "#444" },
-  statusBtn: { border: "none", color: "#fff", padding: "8px 10px", borderRadius: "15px", cursor: "pointer", fontSize: "10px", fontWeight: "bold", width: "85px" },
-  deleteBtn: { background: "none", border: "none", cursor: "pointer", fontSize: "16px", opacity: 0.5 }
+  btnMassPrint: { padding: "8px 16px", color: "#fff", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: 'pointer', fontSize: '12px' },
+  filterBar: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", gap: "10px" },
+  statusTabs: { display: "flex", background: "#f1f5f9", padding: "4px", borderRadius: "8px" },
+  tabBtn: { border: "none", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold" },
+  searchInput: { padding: "8px 15px", borderRadius: "8px", border: "1px solid #e2e8f0", width: "250px" },
+  tableContainer: { background: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", overflowX: "auto" },
+  table: { width: "100%", borderCollapse: "collapse" },
+  thead: { background: "#f8fafc", textAlign: "left" },
+  th: { padding: "12px", fontSize: "11px", color: "#64748b", textTransform: "uppercase" },
+  tr: { borderBottom: "1px solid #f1f5f9" },
+  td: { padding: "12px", fontSize: "13px" },
+  tdBold: { padding: "12px", fontWeight: "bold" },
+  enderecoText: { fontSize: "11px", color: "#94a3b8" },
+  itemLine: { fontSize: "12px" },
+  actionBtn: { border: "none", color: "#fff", padding: "5px 8px", borderRadius: "5px", cursor: "pointer", fontSize: "10px", fontWeight: "bold", minWidth: "60px" },
+  whatsappIcon: { textDecoration: 'none', background: '#25D366', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '10px' }
 };

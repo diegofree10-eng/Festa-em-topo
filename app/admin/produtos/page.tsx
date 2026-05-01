@@ -75,7 +75,10 @@ export default function CadastroProdutos() {
 
         unsubCategorias = onSnapshot(
           query(collection(db, "lojistas", user.uid, "categorias"), orderBy("nome", "asc")), 
-          (snap) => { setListaCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() }))); },
+          (snap) => { 
+            const cats = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setListaCategorias(cats); 
+          },
           (error) => { if (error.code === "permission-denied") return; console.error("Erro Categorias:", error); }
         );
       } else {
@@ -167,11 +170,7 @@ export default function CadastroProdutos() {
 
   async function salvar() {
     if (!uid) return;
-
-    // --- VALIDAÇÃO DE PALAVRAS PROIBIDAS ---
     if (!validarTexto(nome)) return alert("O nome do produto contém palavras não permitidas.");
-
-    // --- VALIDAÇÃO DE CAMPOS OBRIGATÓRIOS ---
     if (!nome.trim()) return alert("O nome do produto é obrigatório.");
     if (!categoria) return alert("Selecione uma categoria.");
     if (!descricao.trim()) return alert("A descrição é obrigatória.");
@@ -196,12 +195,12 @@ export default function CadastroProdutos() {
     if (temVariaveisComPreco) {
       const precos = Object.values(tabelaPrecos).map((v: any) => parseFloat(v.preco)).filter(p => !isNaN(p) && p > 0);
       const custos = Object.values(tabelaPrecos).map((v: any) => parseFloat(v.custo)).filter(c => !isNaN(c) && c > 0);
-      
       if (precos.length > 0) precoFinalParaSalvar = Math.min(...precos).toFixed(2);
       if (custos.length > 0) custoFinalParaSalvar = Math.min(...custos).toFixed(2);
     }
 
     const dados = {
+      lojistaId: uid, // CORREÇÃO: Vincula o produto ao seu ID de lojista
       nome, 
       descricao, 
       categoria, 
@@ -248,6 +247,7 @@ export default function CadastroProdutos() {
 
   return (
     <div style={styles.page}>
+      {/* MODAL DESCRIÇÃO */}
       {showDescModal && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
@@ -260,6 +260,7 @@ export default function CadastroProdutos() {
         </div>
       )}
 
+      {/* MODAL SHOPEE VARIAÇÕES */}
       {showVarModal && (
         <div style={shopeeStyles.overlay}>
           <div style={shopeeStyles.modal}>
@@ -318,6 +319,7 @@ export default function CadastroProdutos() {
         </div>
       )}
 
+      {/* SIDEBAR DE CADASTRO */}
       <div style={styles.sidebar}>
         <h3 style={styles.sideTitle}>{editId ? "📝 Editar Produto" : "📦 Novo Produto"}</h3>
         <input style={styles.input} value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do Produto *" />
@@ -334,7 +336,7 @@ export default function CadastroProdutos() {
           <div style={styles.catManager}>
             {listaCategorias.map(c => (
               <div key={c.id} style={styles.catItem}>
-                <span>{c.nome}</span>
+                <span style={{flex: 1}}>{c.nome}</span>
                 <div style={{display:'flex', gap:'4px'}}>
                   <button onClick={() => {
                     const n = prompt("Novo nome:", c.nome); 
@@ -416,6 +418,7 @@ export default function CadastroProdutos() {
         <button onClick={limparForm} style={styles.btnCancel}>Cancelar / Limpar</button>
       </div>
 
+      {/* MAIN CONTENT - LISTAGEM */}
       <div style={styles.main}>
         <div style={styles.topHeader}>
           <div style={styles.filterRow}>
@@ -481,7 +484,7 @@ export default function CadastroProdutos() {
   );
 }
 
-// OS STYLES CONTINUAM EXATAMENTE IGUAIS AO SEU CÓDIGO ORIGINAL...
+// ESTILOS
 const styles: { [key: string]: React.CSSProperties } = {
   page: { display: 'flex', height: '100vh', width: '100%', maxWidth: '100vw', background: '#f8fafc', overflow: 'hidden', boxSizing: 'border-box', position: 'relative' },
   modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
@@ -526,7 +529,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   imgThumb: { width: '100%', height: '40px', objectFit: 'cover', borderRadius: '4px' },
   btnDelImg: { position: 'absolute', top: -5, right: -5, background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px' },
   catManager: { background: '#f8fafc', padding: '8px', borderRadius: '8px', marginBottom: '10px', border: '1px solid #e2e8f0' },
-  catItem: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px' },
+  catItem: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px', alignItems: 'center' },
   btnAddCat: { width: '100%', padding: '5px', fontSize: '10px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' },
   btnActionSmall: { padding: '10px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' },
   btnMini: { border: 'none', background: 'none', cursor: 'pointer', fontSize: '10px' }
@@ -546,17 +549,17 @@ const shopeeStyles: { [key: string]: React.CSSProperties } = {
   input: { border: '1px solid #ddd', padding: '8px', width: '200px' },
   optionsGrid: { display: 'flex', gap: '10px' },
   tagsContainer: { display: 'flex', flexWrap: 'wrap', gap: '8px', flex: 1 },
-  tagInputWrapper: { display: 'flex', alignItems: 'center', border: '1px solid #ddd' },
-  tagInput: { border: 'none', padding: '6px 10px', width: '100px' },
-  delTag: { border: 'none', background: '#f5f5f5', padding: '6px 8px', cursor: 'pointer' },
-  addBtn: { border: '1px dashed #ee4d2d', color: '#ee4d2d', background: '#fff', padding: '6px 12px', cursor: 'pointer' },
-  table: { width: '100%', borderCollapse: 'collapse', background: '#fff' },
-  trHead: { background: '#f6f6f6' },
-  th: { padding: '12px', textAlign: 'left', borderBottom: '1px solid #e5e5e5' },
-  tr: { borderBottom: '1px solid #eee' },
-  td: { padding: '10px 12px' },
-  tableInput: { width: '100%', padding: '8px', border: '1px solid #ddd' },
-  footer: { padding: '16px 20px', display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #efefef' },
+  tagInputWrapper: { display: 'flex', alignItems: 'center', border: '1px solid #ddd', padding: '4px 8px', borderRadius: '2px', background: '#fff' },
+  tagInput: { border: 'none', outline: 'none', width: '80px', fontSize: '13px' },
+  delTag: { border: 'none', background: 'none', cursor: 'pointer', color: '#999', marginLeft: '4px' },
+  addBtn: { background: '#fff', border: '1px dashed #ee4d2d', color: '#ee4d2d', padding: '8px 16px', cursor: 'pointer' },
+  table: { width: '100%', borderCollapse: 'collapse', marginTop: '20px', background: '#fff' },
+  trHead: { backgroundColor: '#f6f6f6' },
+  th: { padding: '12px', textAlign: 'left', border: '1px solid #efefef', fontSize: '14px', fontWeight: 400, color: '#666' },
+  tr: { borderBottom: '1px solid #efefef' },
+  td: { padding: '12px', border: '1px solid #efefef', fontSize: '14px' },
+  tableInput: { width: '100%', padding: '8px', border: '1px solid #ddd', outline: 'none' },
+  footer: { padding: '16px 20px', borderTop: '1px solid #efefef', display: 'flex', justifyContent: 'flex-end', gap: '10px' },
   btnCancel: { padding: '8px 20px', border: '1px solid #ddd', background: '#fff', cursor: 'pointer' },
-  btnConfirm: { padding: '8px 20px', border: 'none', background: '#ee4d2d', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }
+  btnConfirm: { padding: '8px 20px', border: 'none', background: '#ee4d2d', color: '#fff', cursor: 'pointer' }
 };

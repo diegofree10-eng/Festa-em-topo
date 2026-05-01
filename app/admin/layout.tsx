@@ -1,5 +1,5 @@
 "use client";
-import { useState, useLayoutEffect } from "react";
+import React, { useState, useLayoutEffect } from "react";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -12,25 +12,51 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
 
   useLayoutEffect(() => {
+    // Libera a página de login imediatamente
+    if (pathname === "/login") {
+      setAuthorized(true);
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
-        if (user) {
-          const docRef = doc(db, "lojistas", user.uid);
-          const docSnap = await getDoc(docRef);
+        if (!user) {
+          throw new Error("Sem sessão ativa.");
+        }
 
-          if (docSnap.exists()) {
-            document.cookie = `session=true; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        // Busca o perfil na coleção 'usuarios'
+        const userRef = doc(db, "usuarios", user.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          
+          if (pathname.includes("gestao-geral") && userData.role !== "master") {
+            router.replace("/admin/dash");
+            return;
+          }
+
+          document.cookie = `session=true; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+          setAuthorized(true);
+        } else {
+          // Fallback para lojistas
+          const lojistaRef = doc(db, "lojistas", user.uid);
+          const lojistaSnap = await getDoc(lojistaRef);
+          
+          if (lojistaSnap.exists()) {
             setAuthorized(true);
           } else {
             throw new Error("Acesso não autorizado.");
           }
-        } else {
-          throw new Error("Sem sessão.");
         }
       } catch (error) {
+        console.error("Erro de autenticação:", error);
         setAuthorized(false);
+        // Limpa o cookie se a autenticação falhar
         document.cookie = "session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-        if (pathname.startsWith('/admin')) {
+        
+        if (pathname !== "/login") {
           router.replace("/login");
         }
       } finally {
@@ -41,20 +67,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return () => unsubscribe();
   }, [router, pathname]);
 
+  // Enquanto estiver carregando, mostra o overlay
   if (loading) {
     return (
       <div style={styles.overlay}>
         <div style={styles.loader}></div>
-        <strong>Protegendo acesso ao Festa em Topo...</strong>
+        <strong style={{ fontFamily: 'sans-serif' }}>Verificando credenciais...</strong>
       </div>
     );
   }
 
-  if (!authorized) {
-    return null; 
-  }
+  // Se não estiver autorizado e não for login, não renderiza nada
+  if (!authorized && pathname !== "/login") return null;
 
-  return <div style={{ width: "100%", minHeight: "100vh" }}>{children}</div>;
+  return (
+    <div style={{ width: "100%", minHeight: "100vh", background: "#f8fafc" }}>
+      {children}
+    </div>
+  );
 }
 
 const styles = {
@@ -63,13 +93,13 @@ const styles = {
     width: '100vw', 
     background: '#0f172a', 
     display: 'flex', 
-    flexDirection: 'column' as 'column',
+    flexDirection: 'column' as const,
     gap: '20px',
     alignItems: 'center', 
     justifyContent: 'center', 
     color: '#fff', 
     zIndex: 99999, 
-    position: 'fixed' as 'fixed', 
+    position: 'fixed' as const, 
     top: 0, 
     left: 0 
   },
