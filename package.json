@@ -9,7 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "browser-image-compression": "^2.0.2",
     "firebase": "^10.12.4",
+    "lucide-react": "^1.14.0",
     "mercadopago": "^2.12.0",
     "next": "16.2.3",
     "qrcode": "^1.5.4",

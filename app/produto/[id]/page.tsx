@@ -1,130 +1,235 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useEffect, useState, useMemo } from "react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 
-export default function ProdutoFinal() {
+export default function ProdutoAgrupadoPage() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const [p, setP] = useState<any>(null);
-  const [img, setImg] = useState("");
-  const [sel, setSel] = useState<any>(null);
-  const [loja, setLoja] = useState<any>(null);
+  const router = useRouter();
+
+  const [produto, setProduto] = useState<any>(null);
+  const [imgAtiva, setImgAtiva] = useState("");
+  const [corSelecionada, setCorSelecionada] = useState(""); 
+  const [variacaoFinal, setVariacaoFinal] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function carregar() {
-      const lojaID = searchParams.get("loja");
-      const produtoID = params.id as string;
-      if (!produtoID || !lojaID) return;
-
+    async function load() {
       try {
-        const pRef = doc(db, "lojistas", lojaID, "produtos", produtoID);
-        const lRef = doc(db, "lojistas", lojaID);
-        const [pS, lS] = await Promise.all([getDoc(pRef), getDoc(lRef)]);
+        const id = params?.id;
+        const lojaID = searchParams.get("loja");
+        if (!id || !lojaID) return;
 
-        if (pS.exists()) {
-          const d = pS.data();
-          setP(d);
-          setImg(d.capa || d.imagens?.[0]);
-          if (d.variacoes?.length > 0) setSel(d.variacoes[0]);
+        const ref = doc(db, "lojistas", lojaID, "produtos", id as string);
+        const snap = await getDoc(ref);
+        
+        if (snap.exists()) {
+          const data = snap.data();
+          setProduto(data);
+          
+          // Imagem principal inicial é a capa
+          setImgAtiva(data.capa || "");
+          
+          // Seleciona a primeira cor das variações por padrão
+          if (data.variacoes?.length > 0) {
+            const primeiraCor = (data.variacoes[0].cor || data.variacoes[0].v1 || "").trim();
+            setCorSelecionada(primeiraCor);
+          }
         }
-        if (lS.exists()) setLoja(lS.data());
-      } catch (e) { console.error(e); }
+      } catch (error) {
+        console.error("Erro ao carregar produto:", error);
+      } finally {
+        setLoading(false);
+      }
     }
-    carregar();
-  }, [params.id, searchParams]);
+    load();
+  }, [params, searchParams]);
 
-  if (!p) return null;
+  // --- LÓGICA DE EXIBIÇÃO ---
+
+  // 1. Galeria da Lateral Esquerda (Apenas as fotos carregadas no Sidebar + Capa)
+  const galeriaLateral = useMemo(() => {
+    if (!produto) return [];
+    // Prioriza a capa e depois as fotos extras da galeria
+    const fotos = [];
+    if (produto.capa) fotos.push(produto.capa);
+    if (produto.imagens && Array.isArray(produto.imagens)) {
+      fotos.push(...produto.imagens);
+    }
+    // Retorna apenas as 4 ou 5 primeiras fotos únicas para não poluir
+    return Array.from(new Set(fotos)).slice(0, 5);
+  }, [produto]);
+
+  // 2. Cores únicas para o seletor (Lado Direito)
+  const listaCoresUnicas = useMemo(() => {
+    if (!produto?.variacoes) return [];
+    const vistas = new Set();
+    return produto.variacoes.filter((v: any) => {
+      const nomeCor = (v.cor || v.v1 || "padrão").trim().toLowerCase();
+      if (vistas.has(nomeCor)) return false;
+      vistas.add(nomeCor);
+      return true;
+    });
+  }, [produto?.variacoes]);
+
+  // 3. Filtra variações (Tamanhos) pela cor selecionada
+  const tamanhosDisponiveis = useMemo(() => {
+    if (!corSelecionada || !produto?.variacoes) return [];
+    return produto.variacoes.filter((v: any) => 
+      (v.cor || v.v1 || "").trim().toLowerCase() === corSelecionada.toLowerCase()
+    );
+  }, [corSelecionada, produto?.variacoes]);
+
+  if (loading) return <div style={styles.center}>Carregando...</div>;
+  if (!produto) return <div style={styles.center}>Produto não encontrado.</div>;
 
   return (
-    <div style={s.container}>
-      <header style={s.header}>
-        <div style={s.nav}>
-          <img src={loja?.logo || "/logo.png"} style={s.logo} />
-          <span style={s.brand}>{loja?.nomeFantasia?.toUpperCase() || "LOJA"}</span>
-        </div>
-      </header>
+    <div style={styles.wrapper}>
+      <button onClick={() => router.back()} style={styles.btnBack}> ← Voltar </button>
 
-      <main style={s.main}>
-        {/* LADO ESQUERDO: GALERIA COMPACTA */}
-        <div style={s.left}>
-          <div style={s.imgCard}>
-            <img src={img} style={s.mainImg} />
-          </div>
-          <div style={s.grid}>
-            {p.imagens?.map((url: string, i: number) => (
-              <div key={i} onClick={() => setImg(url)} style={{...s.thumb, border: img === url ? '2px solid #48b4f3' : '1px solid #ddd'}}>
-                <img src={url} style={s.thumbImg} />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* LADO DIREITO: INFOS */}
-        <div style={s.right}>
-          <h1 style={s.title}>{p.nome}</h1>
-          <div style={s.price}>R$ {sel?.preco || p.precoBasico}</div>
-          
-          <div style={s.sep} />
-
-          {p.variacoes?.length > 0 && (
-            <div style={s.box}>
-              <label style={s.label}>{p.nomeVariacaoPrincipal || "VARIAÇÕES"}</label>
-              <div style={s.btns}>
-                {p.variacoes.map((v: any, i: number) => (
-                  <button 
-                    key={i} 
-                    onClick={() => setSel(v)} 
-                    style={{...s.vBtn, background: sel?.nome === v.nome ? '#000' : '#fff', color: sel?.nome === v.nome ? '#fff' : '#000'}}
-                  >
-                    {v.nome}
-                  </button>
-                ))}
-              </div>
+      <div style={styles.mainCard}>
+        
+        {/* LADO ESQUERDO: BARRA LATERAL + IMAGEM PRINCIPAL */}
+        <div style={styles.leftSide}>
+          <div style={styles.containerVisualizacao}>
+            {/* 4 CARDS DA BARRA LATERAL */}
+            <div style={styles.sidebarFotos}>
+              {galeriaLateral.map((img: any, idx: number) => (
+                <div 
+                  key={idx}
+                  onMouseEnter={() => setImgAtiva(img)} // Troca ao passar o mouse ou clique
+                  onClick={() => setImgAtiva(img)}
+                  style={{
+                    ...styles.miniCard,
+                    borderColor: imgAtiva === img ? '#ee4d2d' : '#eee'
+                  }}
+                >
+                  <img src={img} style={styles.miniImg} alt={`Galeria ${idx}`} />
+                </div>
+              ))}
             </div>
-          )}
 
-          <div style={s.box}>
-            <label style={s.label}>DESCRIÇÃO</label>
-            <p style={s.text}>{p.descricao}</p>
+            {/* FOTO GRANDE PRINCIPAL */}
+            <div style={styles.imgPrincipalContainer}>
+              <img src={imgAtiva} style={styles.mainImg} alt={produto.nome} />
+            </div>
+          </div>
+        </div>
+
+        {/* LADO DIREITO: INFORMAÇÕES E SELEÇÃO */}
+        <div style={styles.rightSide}>
+          <h1 style={styles.title}>{produto.nome}</h1>
+          
+          <div style={styles.priceBox}>
+            <p style={styles.labelPreco}>Preço da variação:</p>
+            <span style={styles.price}>
+              R$ {variacaoFinal ? variacaoFinal.preco : (produto.precoBasico || "0,00")}
+            </span>
           </div>
 
-          <button style={s.buy}>ADICIONAR AO CARRINHO</button>
+          {/* PASSO 1: CORES */}
+          <div style={styles.section}>
+            <label style={styles.label}>1. ESCOLHA O MODELO/COR:</label>
+            <div style={styles.gridCores}>
+              {listaCoresUnicas.map((item: any, i: number) => {
+                const nomeCorItem = (item.cor || item.v1 || "").trim();
+                const isAtivo = corSelecionada.toLowerCase() === nomeCorItem.toLowerCase();
+                
+                return (
+                  <div 
+                    key={i}
+                    onClick={() => {
+                      setCorSelecionada(nomeCorItem);
+                      setImgAtiva(item.foto); // Sincroniza a imagem principal com a cor
+                      setVariacaoFinal(null); 
+                    }}
+                    style={{
+                      ...styles.cardCor,
+                      borderColor: isAtivo ? '#ee4d2d' : '#eee',
+                    }}
+                  >
+                    <img src={item.foto} style={styles.imgCardCor} alt={nomeCorItem} />
+                    {isAtivo && <div style={styles.check}>✓</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* PASSO 2: TAMANHOS */}
+          <div style={styles.boxSelecao}>
+            <label style={styles.label}>2. AGORA ESCOLHA O TAMANHO:</label>
+            <div style={styles.gridTamanhos}>
+              {tamanhosDisponiveis.map((op: any, i: number) => (
+                <button 
+                  key={i}
+                  onClick={() => setVariacaoFinal(op)}
+                  style={{
+                    ...styles.sizeBtn,
+                    backgroundColor: variacaoFinal?.nome === op.nome ? '#ee4d2d' : '#fff',
+                    color: variacaoFinal?.nome === op.nome ? '#fff' : '#333',
+                    borderColor: variacaoFinal?.nome === op.nome ? '#ee4d2d' : '#ddd'
+                  }}
+                >
+                  {op.nome}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button 
+            disabled={!variacaoFinal}
+            style={{
+              ...styles.btnComprar, 
+              backgroundColor: variacaoFinal ? '#ee4d2d' : '#ccc',
+            }}
+          >
+            {variacaoFinal ? 'ADICIONAR AO CARRINHO' : 'SELECIONE O TAMANHO'}
+          </button>
         </div>
-      </main>
+
+      </div>
     </div>
   );
 }
 
-const s: { [key: string]: React.CSSProperties } = {
-  container: { background: '#fff', minHeight: '100vh', fontFamily: 'sans-serif', color: '#000' },
-  header: { background: '#48b4f3', padding: '15px 0', borderBottom: '1px solid #ddd' },
-  nav: { maxWidth: '900px', margin: '0 auto', display: 'flex', alignItems: 'center', gap: '12px', padding: '0 20px' },
-  logo: { width: '32px', height: '32px', borderRadius: '50%', background: '#fff' },
-  brand: { color: '#fff', fontWeight: 'bold', fontSize: '14px' },
-
-  main: { maxWidth: '900px', margin: '40px auto', display: 'flex', flexWrap: 'wrap', gap: '40px', padding: '0 20px' },
+const styles: { [key: string]: React.CSSProperties } = {
+  wrapper: { padding: '20px', maxWidth: '1200px', margin: '0 auto', fontFamily: 'Arial, sans-serif' },
+  btnBack: { background: 'none', border: 'none', color: '#888', cursor: 'pointer', marginBottom: '10px' },
+  center: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' },
   
-  // QUADRO DA IMAGEM REDUZIDO (320px)
-  left: { flex: '0 0 320px', display: 'flex', flexDirection: 'column', gap: '12px' },
-  imgCard: { width: '320px', height: '320px', background: '#fcfcfc', border: '1px solid #eee', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  mainImg: { maxWidth: '85%', maxHeight: '85%', objectFit: 'contain' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' },
-  thumb: { aspectRatio: '1/1', cursor: 'pointer', background: '#fff', overflow: 'hidden' },
-  thumbImg: { width: '100%', height: '100%', objectFit: 'cover' },
+  mainCard: { display: 'flex', gap: '30px', background: '#fff', padding: '20px', borderRadius: '8px' },
+  
+  // LADO ESQUERDO
+  leftSide: { flex: '1.5' },
+  containerVisualizacao: { display: 'flex', gap: '15px' },
+  sidebarFotos: { display: 'flex', flexDirection: 'column', gap: '10px' },
+  miniCard: { width: '80px', height: '80px', border: '2px solid', borderRadius: '4px', cursor: 'pointer', overflow: 'hidden' },
+  miniImg: { width: '100%', height: '100%', objectFit: 'cover' },
+  imgPrincipalContainer: { flex: 1, aspectRatio: '1/1', border: '1px solid #f0f0f0', borderRadius: '8px', overflow: 'hidden' },
+  mainImg: { width: '100%', height: '100%', objectFit: 'contain' },
 
-  right: { flex: '1', minWidth: '300px' },
-  title: { fontSize: '24px', fontWeight: 'bold', margin: '0 0 8px 0' },
-  price: { fontSize: '26px', fontWeight: 'bold', color: '#e63946' },
-  sep: { height: '1px', background: '#eee', margin: '20px 0' },
+  // LADO DIREITO
+  rightSide: { flex: '1' },
+  title: { fontSize: '24px', fontWeight: 'bold', color: '#333', marginBottom: '10px' },
+  priceBox: { background: '#fef4f2', padding: '15px', borderRadius: '6px', marginBottom: '20px' },
+  labelPreco: { fontSize: '12px', color: '#888' },
+  price: { fontSize: '30px', color: '#ee4d2d', fontWeight: 'bold' },
 
-  box: { marginBottom: '20px' },
-  label: { fontSize: '11px', fontWeight: 'bold', color: '#999', marginBottom: '8px', display: 'block' },
-  btns: { display: 'flex', flexWrap: 'wrap', gap: '8px' },
-  vBtn: { padding: '8px 14px', border: '1px solid #333', fontSize: '13px', fontWeight: '600', cursor: 'pointer' },
-  text: { fontSize: '14px', lineHeight: '1.6', color: '#444' },
+  section: { marginBottom: '25px' },
+  label: { fontSize: '13px', fontWeight: 'bold', color: '#555', marginBottom: '10px', display: 'block' },
+  
+  gridCores: { display: 'flex', flexWrap: 'wrap', gap: '10px' },
+  cardCor: { width: '50px', height: '50px', border: '2px solid', borderRadius: '4px', cursor: 'pointer', position: 'relative' },
+  imgCardCor: { width: '100%', height: '100%', objectFit: 'cover' },
+  check: { position: 'absolute', top: -4, right: -4, background: '#ee4d2d', color: '#fff', borderRadius: '50%', width: '16px', height: '16px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
 
-  buy: { width: '100%', padding: '18px', background: '#000', color: '#fff', border: 'none', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }
+  boxSelecao: { marginBottom: '25px' },
+  gridTamanhos: { display: 'flex', flexWrap: 'wrap', gap: '8px' },
+  sizeBtn: { padding: '10px 20px', border: '1px solid', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' },
+
+  btnComprar: { width: '100%', padding: '18px', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }
 };

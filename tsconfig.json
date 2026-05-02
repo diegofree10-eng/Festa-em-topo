@@ -18,6 +18,7 @@
         "name": "next"
       }
     ],
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
     }
@@ -28,7 +29,11 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
-, "app/admin/produtos/MobileLayout.jsx", "app/admin/DashboardGestao.tsx", "app/admin/page.jsx", "app/admin/Produtos"  ],
+    "**/*.mts",
+    "app/admin/produtos/MobileLayout.jsx",
+    "app/admin/DashboardGestao.tsx",
+    "app/admin/page.jsx",
+    "app/admin/Produtos"
+  ],
   "exclude": ["node_modules"]
 }
