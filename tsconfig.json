@@ -32,7 +32,7 @@
     "**/*.mts",
     "app/admin/produtos/MobileLayout.jsx",
     "app/admin/DashboardGestao.tsx",
-    "app/admin/page.jsx",
+    "app/admin/page.tsx",
     "app/admin/Produtos"
   ],
   "exclude": ["node_modules"]

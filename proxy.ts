@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
+// Mudamos o nome de 'middleware' para 'proxy' ou usamos export default
+export function proxy(request: NextRequest) {
   // Tentamos capturar o cookie de sessão. 
   // No Firebase/Next, os nomes mais comuns são 'session', '__session' ou 'token'
   const session = request.cookies.get('session') || request.cookies.get('__session');
@@ -27,7 +28,7 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// O matcher garante que o middleware não rode em arquivos de imagem, css ou api,
+// O matcher garante que o proxy não rode em arquivos de imagem, css ou api,
 // economizando processamento e focando apenas nas rotas que você quer proteger.
 export const config = {
   matcher: [

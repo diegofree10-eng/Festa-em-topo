@@ -95,7 +95,6 @@ LinhaPedido.displayName = "LinhaPedido";
 export default function DashboardGestao() {
   const router = useRouter();
   
-  // Estados de controle
   const [lojaId, setLojaId] = useState<string | null>(null);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
@@ -113,31 +112,34 @@ export default function DashboardGestao() {
       }
 
       try {
-        // Busca o lojaId vinculado ao perfil do lojista via UID (Segurança Multiloja)
         const userRef = doc(db, "usuarios", user.uid);
         const userSnap = await getDoc(userRef);
 
-        if (userSnap.exists() && userSnap.data().lojaId) {
-          const idIdentificado = userSnap.data().lojaId;
-          setLojaId(idIdentificado);
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          // Validação de acesso admin/master
+          if (userData.lojaId && (userData.role === 'master' || userData.role === 'admin')) {
+            const idIdentificado = userData.lojaId;
+            setLojaId(idIdentificado);
 
-          const q = query(
-            collection(db, "lojistas", idIdentificado, "registros_pedidos"), 
-            orderBy("numeroPedido", "desc")
-          );
+            const q = query(
+              collection(db, "lojistas", idIdentificado, "registros_pedidos"), 
+              orderBy("numeroPedido", "desc")
+            );
 
-          const unsubDocs = onSnapshot(q, (snap) => {
-            const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Pedido));
-            setPedidos(docs);
+            const unsubDocs = onSnapshot(q, (snap) => {
+              const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Pedido));
+              setPedidos(docs);
+              setLoading(false);
+            }, (error) => {
+              console.error("Erro ao carregar dados:", error);
+              setLoading(false);
+            });
+
+            return () => unsubDocs();
+          } else {
             setLoading(false);
-          }, (error) => {
-            console.error("Erro ao carregar dados:", error);
-            setLoading(false);
-          });
-
-          return () => unsubDocs();
-        } else {
-          setLoading(false);
+          }
         }
       } catch (error) {
         console.error("Erro de autenticação:", error);
@@ -381,6 +383,7 @@ export default function DashboardGestao() {
   );
 }
 
+// --- ESTILOS MANTIDOS ---
 const styles: Record<string, React.CSSProperties> = {
   page: { padding: "20px 40px", background: "#f4f7f6", minHeight: "100vh", fontFamily: "sans-serif" },
   loading: { padding: '100px', textAlign: 'center', fontSize: '20px', color: '#666' },

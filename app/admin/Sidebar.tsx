@@ -17,30 +17,50 @@ export default function Sidebar({ telaAtiva, setTelaAtiva }: SidebarProps) {
     logoUrl: null
   });
 
+  // Referência para limpar o listener da loja ao deslogar ou mudar de usuário
   const unsubRef = React.useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Busca o Role para o botão Master
-        const userDoc = await getDoc(doc(db, "usuarios", user.uid));
-        if (userDoc.exists()) {
-          setRole(userDoc.data().role);
-        }
+        try {
+          // 1. Primeiro buscamos o Role para garantir autorização no Firestore
+          const userDoc = await getDoc(doc(db, "usuarios", user.uid));
+          
+          if (userDoc.exists()) {
+            const userRole = userDoc.data().role;
+            setRole(userRole);
 
-        // Escuta os dados da loja
-        const docRef = doc(db, "lojistas", user.uid);
-        unsubRef.current = onSnapshot(docRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setDadosLoja({
-              nomeLoja: data.nomeLoja || "Minha Loja",
-              logoUrl: data.logoUrl || null
+            // 2. Só iniciamos a escuta (onSnapshot) após confirmar o login e papel
+            // Isso evita o erro de permissão negada no carregamento inicial
+            const docRef = doc(db, "lojistas", user.uid);
+            
+            // Cancela listener anterior se existir
+            if (unsubRef.current) unsubRef.current();
+
+            unsubRef.current = onSnapshot(docRef, (docSnap) => {
+              if (docSnap.exists()) {
+                const data = docSnap.data();
+                setDadosLoja({
+                  nomeLoja: data.nomeLoja || "Minha Loja",
+                  logoUrl: data.logoUrl || null
+                });
+              }
+            }, (error) => {
+              // Log silencioso se for erro de permissão temporário no HMR
+              if (error.code !== 'permission-denied') {
+                console.error("Erro ao escutar lojista:", error);
+              }
             });
           }
-        });
+        } catch (error) {
+          console.error("Erro ao validar permissões:", error);
+        }
       } else {
+        // Limpeza total ao sair
         if (unsubRef.current) unsubRef.current();
+        setRole(null);
+        setDadosLoja({ nomeLoja: "Acesso Negado", logoUrl: null });
       }
     });
 
@@ -101,7 +121,7 @@ export default function Sidebar({ telaAtiva, setTelaAtiva }: SidebarProps) {
           </button>
         ))}
 
-        {/* BOTÃO MASTER RESTAURADO COM DESIGN ORIGINAL */}
+        {/* ACESSO MASTER - VISÍVEL APENAS PARA ROLE MASTER */}
         {role === 'master' && (
           <button
             onClick={() => setTelaAtiva('gestao-geral')}
@@ -128,13 +148,64 @@ export default function Sidebar({ telaAtiva, setTelaAtiva }: SidebarProps) {
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
-  sidebar: { width: '260px', background: '#1e293b', color: '#fff', display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0 },
-  brandArea: { padding: '40px 20px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', borderBottom: '1px solid #334155', marginBottom: '10px' },
-  logoContainer: { width: '105px', height: '105px', borderRadius: '12px', background: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '3px solid #fdb813', marginBottom: '15px' },
+  sidebar: { 
+    width: '260px', 
+    background: '#1e293b', 
+    color: '#fff', 
+    display: 'flex', 
+    flexDirection: 'column', 
+    height: '100vh', 
+    position: 'sticky', 
+    top: 0 
+  },
+  brandArea: { 
+    padding: '40px 20px 30px', 
+    display: 'flex', 
+    flexDirection: 'column', 
+    alignItems: 'center', 
+    borderBottom: '1px solid #334155', 
+    marginBottom: '10px' 
+  },
+  logoContainer: { 
+    width: '105px', 
+    height: '105px', 
+    borderRadius: '12px', 
+    background: '#334155', 
+    display: 'flex', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    overflow: 'hidden', 
+    border: '3px solid #fdb813', 
+    marginBottom: '15px' 
+  },
   logoImg: { width: '100%', height: '100%', objectFit: 'cover' },
   logoPlaceholder: { fontSize: '36px', fontWeight: 'bold', color: '#fdb813' },
   storeName: { fontSize: '18px', color: '#fff', textAlign: 'center', fontWeight: '600' },
   nav: { flex: 1, padding: '10px', display: 'flex', flexDirection: 'column', gap: '5px' },
-  navBtn: { display: 'flex', alignItems: 'center', padding: '12px 15px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', width: '100%', transition: 'all 0.2s' },
-  logoutBtn: { padding: '20px', border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderTop: '1px solid #334155', width: '100%', fontWeight: 'bold', fontSize: '15px' }
+  navBtn: { 
+    display: 'flex', 
+    alignItems: 'center', 
+    padding: '12px 15px', 
+    borderRadius: '8px', 
+    border: 'none', 
+    cursor: 'pointer', 
+    fontSize: '15px', 
+    width: '100%', 
+    transition: 'all 0.2s',
+    textAlign: 'left'
+  },
+  logoutBtn: { 
+    padding: '20px', 
+    border: 'none', 
+    background: 'none', 
+    color: '#ef4444', 
+    cursor: 'pointer', 
+    display: 'flex', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    borderTop: '1px solid #334155', 
+    width: '100%', 
+    fontWeight: 'bold', 
+    fontSize: '15px' 
+  }
 };

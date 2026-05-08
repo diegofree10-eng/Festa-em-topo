@@ -3,110 +3,38 @@
 import { useEffect, useState } from "react";
 import { db, auth, storage } from "@/lib/firebase"; 
 import { 
-  collection, 
-  addDoc, 
-  doc, 
-  query, 
-  orderBy, 
-  updateDoc, 
-  deleteDoc, 
-  onSnapshot, 
-  writeBatch,
-  setDoc 
+  collection, addDoc, doc, query, orderBy, updateDoc, 
+  deleteDoc, onSnapshot, writeBatch, setDoc, getDoc 
 } from "firebase/firestore";
-import { 
-  ref, 
-  uploadBytes, 
-  getDownloadURL, 
-  uploadString 
-} from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, uploadString } from "firebase/storage";
 import { onAuthStateChanged } from "firebase/auth";
+import { FiDownload } from "react-icons/fi"; // Importando ícone de download
 
-// --- CONFIGURAÇÃO DE SEGURANÇA ---
+// --- IMPORTAÇÃO DOS ESTADOS E MODAIS ---
+import { styles } from "./styles"; 
+import RequisitosModal from "@/app/admin/components/RequisitosModal";
+import VariacoesModal from "@/app/admin/components/VariacoesModal";
+
+// --- CONFIGURAÇÃO DE SEGURANÇA E PLANOS ---
+const LIMITES_PLANOS = {
+  Bronze: { produtos: 60, categorias: 6 },
+  Prata: { produtos: 80, categorias: 8 },
+  Ouro: { produtos: 110, categorias: 10 },
+};
+
 const PALAVRAS_PROIBIDAS = [
   "admin", "master", "suporte", "festaemtopo", "root", "null", 
   "undefined", "api", "vendas", "financeiro", "ajuda", "config",
   "sistema", "login", "auth", "teste", "gerente", "houseconviteria",
-  "chefe", "teste", "gerente"
+  "chefe"
 ];
-
-const styles: { [key: string]: React.CSSProperties } = {
-  page: { display: 'flex', height: '100vh', width: '100%', maxWidth: '100vw', background: '#f8fafc', overflow: 'hidden', boxSizing: 'border-box', position: 'relative' },
-  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-  modalContent: { background: '#fff', padding: '20px', borderRadius: '12px', width: '80%', maxWidth: '600px', height: '70vh', display: 'flex', flexDirection: 'column' },
-  modalTextarea: { flex: 1, padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '14px', resize: 'none', lineHeight: '1.5' },
-  sidebar: { width: '260px', minWidth: '260px', maxWidth: '260px', background: '#fff', padding: '15px', overflowY: 'auto', borderRight: '1px solid #e2e8f0', boxSizing: 'border-box' },
-  main: { flex: 1, padding: '15px', overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box' },
-  topHeader: { display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px', width: '100%', boxSizing: 'border-box' },
-  filterRow: { display: 'flex', gap: '5px', alignItems: 'center', width: '100%', boxSizing: 'border-box' },
-  searchBar: { flex: 3, padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' },
-  selectTop: { flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff', fontSize: '13px' },
-  selectStatus: { width: '100px', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fff' },
-  btnGeneric: { padding: '10px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' },
-  massPanel: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eff6ff', padding: '10px', borderRadius: '10px', border: '1px solid #3b82f6' },
-  btnMass: { padding: '6px 12px', background: '#fff', border: '1px solid #3b82f6', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' },
-  productGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: '10px', width: '100%' },
-  card: { background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', position: 'relative', overflow: 'hidden', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', height: '260px' },
-  starBadge: { position: 'absolute', top: '5px', right: '5px', zIndex: 5, fontSize: '14px' },
-  cardCheck: { position: 'absolute', top: '8px', left: '8px', zIndex: 10, width: '18px', height: '18px' },
-  cardImg: { width: '100%', height: '100px', minHeight: '100px', maxHeight: '100px', objectFit: 'contain', background: '#ffffff', padding: '4px', display: 'block', borderBottom: '1px solid #f1f5f9', boxSizing: 'border-box' },
-  cardBody: { padding: '8px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'flex-start', gap: '2px' },
-  cardTitle: { fontSize: '10px', fontWeight: 'bold', height: '24px', color: '#334155', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: '12px', marginBottom: '4px' },
-  cardPrice: { fontSize: '13px', fontWeight: 'bold', color: '#10b981', marginTop: 'auto' },
-  markupTag: { fontSize: '9px', background: '#ecfdf5', color: '#059669', padding: '1px 4px', borderRadius: '4px', fontWeight: '800', alignSelf: 'flex-start' },
-  cardActions: { display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '6px', padding: '0 8px 8px 8px' },
-  btnSlim: { padding: '4px', fontSize: '9px', fontWeight: 'bold', border: 'none', borderRadius: '3px', background: '#f1f5f9', cursor: 'pointer', textAlign: 'center' },
-  btnDelete: { padding: '4px', fontSize: '9px', fontWeight: 'bold', border: 'none', borderRadius: '3px', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', textAlign: 'center' },
-  sideTitle: { fontSize: '15px', fontWeight: 'bold', marginBottom: '15px' },
-  input: { width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '10px', fontSize: '13px', boxSizing: 'border-box' },
-  textarea: { width: '100%', height: '80px', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '10px', fontSize: '13px', boxSizing: 'border-box', resize: 'none', overflow: 'hidden' },
-  freteBox: { padding: '10px', background: '#eff6ff', borderRadius: '8px', marginBottom: '10px', border: '1px solid #dbeafe' },
-  checkLabel: { fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' },
-  boxGray: { background: '#f1f5f9', padding: '10px', borderRadius: '8px', marginBottom: '10px' },
-  miniLabel: { fontSize: '11px', fontWeight: 'bold', color: '#64748b', display: 'block', marginBottom: '5px' },
-  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' },
-  inputSmall: { width: '100%', padding: '8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' },
-  btnSave: { width: '100%', padding: '14px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' },
-  btnCancel: { width: '100%', marginTop: '5px', padding: '10px', background: '#f1f5f9', border: 'none', borderRadius: '8px', fontSize: '12px', cursor: 'pointer' },
-  btnUpload: { width: '100%', padding: '12px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', cursor: 'pointer', marginBottom: '10px', position: 'relative', fontSize: '12px' },
-  btnConfirmImgs: { width: '100%', padding: '8px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', marginBottom: '10px', cursor: 'pointer' },
-  fileInvis: { position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' },
-  previewGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '10px' },
-  imgThumb: { width: '100%', height: '40px', objectFit: 'cover', borderRadius: '4px' },
-  btnDelImg: { position: 'absolute', top: -5, right: -5, background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px' },
-  catManager: { background: '#f8fafc', padding: '8px', borderRadius: '8px', marginBottom: '10px', border: '1px solid #e2e8f0' },
-  catItem: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px', alignItems: 'center' },
-  btnAddCat: { width: '100%', padding: '5px', fontSize: '10px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' },
-  btnActionSmall: { padding: '10px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' },
-  btnMini: { border: 'none', background: 'none', cursor: 'pointer', fontSize: '10px' }
-};
-
-const shopeeStyles: { [key: string]: React.CSSProperties } = {
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  modal: { background: '#fff', width: '95%', maxWidth: '800px', height: '90vh', borderRadius: '4px', display: 'flex', flexDirection: 'column' },
-  header: { padding: '15px 20px', borderBottom: '1px solid #e8e8e8', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  title: { fontSize: '18px', margin: 0, color: '#333333' },
-  closeBtn: { border: 'none', background: 'none', fontSize: '20px', cursor: 'pointer', color: '#f50c0c' },
-  content: { flex: 1, overflowY: 'auto', padding: '20px' },
-  section: { marginBottom: '25px' },
-  label: { display: 'block', marginBottom: '10px', fontWeight: 'bold', color: '#494646' },
-  varBox: { border: '1px solid #e8e8e8', padding: '15px', borderRadius: '2px', background: '#fafafa' },
-  tagsContainer: { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' },
-  tagInputWrapper: { display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #dcdcdc', borderRadius: '2px' },
-  tagInput: { border: 'none', padding: '6px 10px', outline: 'none', width: '100px', fontSize: '13px' },
-  delTag: { border: 'none', background: 'none', padding: '0 8px', cursor: 'pointer', color: '#999', borderLeft: '1px solid #eee' },
-  addBtn: { border: '1px dashed #ee4d2d', background: '#fff', color: '#ee4d2d', padding: '6px 15px', cursor: 'pointer', borderRadius: '2px' },
-  table: { width: '100%', borderCollapse: 'collapse', marginTop: '20px' },
-  trHead: { background: '#f6f6f6' },
-  th: { padding: '12px', textAlign: 'left', fontSize: '13px', border: '1px solid #e8e8e8' },
-  tr: { border: '1px solid #e8e8e8' },
-  td: { padding: '10px', border: '1px solid #e8e8e8' },
-  tableInput: { width: '100%', padding: '8px', border: '1px solid #dcdcdc', borderRadius: '2px', outline: 'none', textAlign: 'right' },
-  footer: { padding: '15px 20px', borderTop: '1px solid #e8e8e8', display: 'flex', justifyContent: 'flex-end' }
-};
 
 export default function CadastroProdutos() {
   const [uid, setUid] = useState<string | null>(null);
+  const [planoLojista, setPlanoLojista] = useState("Bronze");
+  const [planosMaster, setPlanosMaster] = useState<any>(null);
+  const [limites, setLimites] = useState({ produtos: 0, categorias: 0 });
+  
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
   const [categoria, setCategoria] = useState("");
@@ -127,6 +55,10 @@ export default function CadastroProdutos() {
   const [listaCategorias, setListaCategorias] = useState<any[]>([]);
   const [showCatManager, setShowCatManager] = useState(false);
   const [showDescModal, setShowDescModal] = useState(false);
+  const [showReqModal, setShowReqModal] = useState(false);
+  const [requisitos, setRequisitos] = useState({ 
+    pedeNome: false, pedeIdade: false, pedeData: false, pedeObs: false 
+  });
   const [busca, setBusca] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("Todos");
   const [filtroStatus, setFiltroStatus] = useState("Todos");
@@ -139,6 +71,119 @@ export default function CadastroProdutos() {
   const [opcoesVar2, setOpcoesVar2] = useState<string[]>([]);
   const [tabelaPrecos, setTabelaPrecos] = useState<any>({});
 
+  // --- SINCRONIZAÇÃO DE LIMITES ---
+  useEffect(() => {
+    const unsubMaster = onSnapshot(doc(db, "configuracoes", "planos"), (snap) => {
+      if (snap.exists()) setPlanosMaster(snap.data());
+    });
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUid(user.uid);
+        onSnapshot(doc(db, "lojistas", user.uid), (docSnap) => {
+          if (docSnap.exists()) {
+            const dados = docSnap.data();
+            setPlanoLojista(dados.plano || "Bronze");
+          }
+        });
+
+        onSnapshot(query(collection(db, "lojistas", user.uid, "produtos"), orderBy("createdAt", "desc")), (snap) => { 
+          setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() }))); 
+        });
+        onSnapshot(query(collection(db, "lojistas", user.uid, "categorias"), orderBy("nome", "asc")), (snap) => { 
+          setListaCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() }))); 
+        });
+      }
+    });
+    return () => { unsubMaster(); unsubAuth(); };
+  }, []);
+
+  useEffect(() => {
+    const infoPlanoMaster = planosMaster?.[planoLojista];
+    const infoPlanoEstatico = LIMITES_PLANOS[planoLojista as keyof typeof LIMITES_PLANOS];
+    setLimites({
+      produtos: infoPlanoMaster?.produtos ?? infoPlanoEstatico.produtos,
+      categorias: infoPlanoMaster?.categorias ?? infoPlanoEstatico.categorias
+    });
+  }, [planosMaster, planoLojista]);
+
+  // --- FUNÇÕES DE EXPORTAÇÃO CSV ---
+  const exportarProdutosCSV = () => {
+    if (planoLojista === "Bronze") {
+      alert("A exportação de relatórios está disponível apenas nos planos Prata e Ouro.");
+      return;
+    }
+
+    if (produtosFiltrados.length === 0) {
+      alert("Não há produtos para exportar.");
+      return;
+    }
+
+    // 1. Cabeçalho mais robusto
+    const cabecalho = [
+      "ID Produto", 
+      "Nome", 
+      "Variacao/Grade", // Coluna nova para detalhar a variação
+      "Categoria", 
+      "Preco Venda", 
+      "Custo", 
+      "Status", 
+      "Peso(kg)", 
+      "Medidas", 
+      "Personalizavel"
+    ];
+
+    const linhas: any[] = [];
+
+    produtosFiltrados.forEach(p => {
+      // Se o produto TEM variações, criamos uma linha para cada uma
+      if (p.temVariacoes && p.variacoes && p.variacoes.length > 0) {
+        p.variacoes.forEach((v: any) => {
+          linhas.push([
+            p.id,
+            `"${p.nome?.replace(/"/g, '""')}"`,
+            `"${v.nome?.replace(/"/g, '""')}"`, // Ex: "Azul / G"
+            `"${p.categoria || ""}"`,
+            v.preco || p.precoBasico,
+            v.custo || p.custoUnitario || "0.00",
+            p.ativo ? "Visivel" : "Oculto",
+            p.peso || "0",
+            `${p.comprimento || 0}x${p.largura || 0}x${p.altura || 0}`,
+            p.requisitos ? "Sim" : "Nao"
+          ]);
+        });
+      } else {
+        // Se NÃO tem variações, criamos apenas a linha do produto principal
+        linhas.push([
+          p.id,
+          `"${p.nome?.replace(/"/g, '""')}"`,
+          "Unico",
+          `"${p.categoria || ""}"`,
+          p.precoBasico,
+          p.custoUnitario || "0.00",
+          p.ativo ? "Visivel" : "Oculto",
+          p.peso || "0",
+          `${p.comprimento || 0}x${p.largura || 0}x${p.altura || 0}`,
+          p.requisitos ? "Sim" : "Nao"
+        ]);
+      }
+    });
+
+    // 2. Montagem e Download (Padrão Excel BR)
+    const csvContent = "\ufeff" + [
+      cabecalho.join(";"),
+      ...linhas.map(l => l.join(";"))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `relatorio_completo_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`;
+    link.click();
+  };
+
+  // --- FUNÇÕES DE AUXÍLIO ---
   const comprimirImagem = (file: File): Promise<Blob> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -176,26 +221,6 @@ export default function CadastroProdutos() {
     return (((v - c) / c) * 100).toFixed(0);
   };
 
-  useEffect(() => {
-    let unsubProdutos: (() => void) | null = null;
-    let unsubCategorias: (() => void) | null = null;
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUid(user.uid);
-        unsubProdutos = onSnapshot(query(collection(db, "lojistas", user.uid, "produtos"), orderBy("createdAt", "desc")), (snap) => { 
-          setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() }))); 
-        });
-        unsubCategorias = onSnapshot(query(collection(db, "lojistas", user.uid, "categorias"), orderBy("nome", "asc")), (snap) => { 
-          setListaCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() }))); 
-        });
-      } else {
-        if (unsubProdutos) unsubProdutos(); if (unsubCategorias) unsubCategorias();
-        setUid(null); setProdutos([]); setListaCategorias([]);
-      }
-    });
-    return () => { unsubAuth(); if (unsubProdutos) unsubProdutos(); if (unsubCategorias) unsubCategorias(); };
-  }, []);
-
   const formatInput = (value: string, setter: (v: string) => void) => {
     const cleanValue = value.replace(/\D/g, "");
     if (!cleanValue) { setter(""); return; }
@@ -212,22 +237,6 @@ export default function CadastroProdutos() {
     setTabelaPrecos((prev: any) => ({ ...prev, [key]: { ...prev[key], [campo]: formatted } }));
   };
 
-  async function uploadImagens() {
-    if (!uid || imagens.length + files.length > 4) return alert("Máximo 4 fotos.");
-    setUploading(true);
-    const urls: string[] = [];
-    for (let file of files) {
-      try {
-        const blob = await comprimirImagem(file);
-        const storageRef = ref(storage, `lojistas/${uid}/produtos/${Date.now()}-${file.name}`);
-        const snapshot = await uploadBytes(storageRef, blob);
-        const downloadURL = await getDownloadURL(snapshot.ref);
-        urls.push(downloadURL);
-      } catch (e) { console.error(e); }
-    }
-    setImagens([...imagens, ...urls]); setFiles([]); setUploading(false);
-  }
-
   const gerarCombinacoes = () => {
     if (opcoesVar1.length === 0) return [];
     if (opcoesVar2.length === 0) return opcoesVar1.filter(v => v.trim()).map(v1 => ({ v1, v2: "", key: v1 }));
@@ -237,6 +246,21 @@ export default function CadastroProdutos() {
     });
     return combos;
   };
+
+  async function uploadImagens() {
+    if (!uid || imagens.length + files.length > 4) return alert("Máximo 4 fotos.");
+    setUploading(true);
+    for (let file of files) {
+      try {
+        const blob = await comprimirImagem(file);
+        const storageRef = ref(storage, `lojistas/${uid}/produtos/${Date.now()}-${file.name}`);
+        const snapshot = await uploadBytes(storageRef, blob);
+        const downloadURL = await getDownloadURL(snapshot.ref);
+        setImagens(prev => [...prev, downloadURL]);
+      } catch (e) { console.error(e); }
+    }
+    setFiles([]); setUploading(false);
+  }
 
   async function acaoEmMassa(tipo: string) {
     if (selecionados.length === 0 || !uid) return;
@@ -262,6 +286,10 @@ export default function CadastroProdutos() {
 
   async function salvar() {
     if (!uid) return;
+    if (!editId && produtos.length >= limites.produtos) {
+      alert(`Limite atingido! Seu plano permite até ${limites.produtos} produtos.`);
+      return;
+    }
     if (!validarTexto(nome) || !nome.trim()) return alert("Nome inválido.");
     if (!categoria) return alert("Selecione uma categoria.");
     if (imagens.length === 0) return alert("Adicione uma foto.");
@@ -270,16 +298,13 @@ export default function CadastroProdutos() {
     try {
       const produtoId = editId || doc(collection(db, "lojistas", uid, "produtos")).id;
       const novaTabelaPrecos = { ...tabelaPrecos };
-      
-      // Corrigido: Loop de upload das fotos das variações que agora aguarda a conclusão
       const keys = Object.keys(tabelaPrecos);
       for (const key of keys) {
         const item = tabelaPrecos[key];
         if (item.foto && item.foto.startsWith("data:image")) {
           const storageRef = ref(storage, `lojistas/${uid}/produtos/${produtoId}/vars/${key}.jpg`);
           const snapshot = await uploadString(storageRef, item.foto, 'data_url');
-          const downloadURL = await getDownloadURL(snapshot.ref);
-          novaTabelaPrecos[key].foto = downloadURL;
+          novaTabelaPrecos[key].foto = await getDownloadURL(snapshot.ref);
         }
       }
 
@@ -291,7 +316,7 @@ export default function CadastroProdutos() {
         lojistaId: uid, nome, descricao, categoria, precoBasico: precoFinal, custoUnitario, ativo, precisaFrete,
         peso, comprimento, largura, altura, imagens, capa: imagens[0] || "",
         temVariacoes: temVariaveisComPreco,
-        nomeVar1, nomeVar2,
+        nomeVar1, nomeVar2, requisitos,
         variacoes: temVariaveisComPreco ? combos.map(c => ({
           nome: c.v2 ? `${c.v1} / ${c.v2}` : c.v1,
           v1: c.v1, v2: c.v2,
@@ -303,18 +328,12 @@ export default function CadastroProdutos() {
       };
 
       const docRef = doc(db, "lojistas", uid, "produtos", produtoId);
-      if (editId) {
-        await updateDoc(docRef, dados);
-      } else {
-        await setDoc(docRef, { ...dados, destaque: false, createdAt: Date.now() });
-      }
+      if (editId) await updateDoc(docRef, dados);
+      else await setDoc(docRef, { ...dados, destaque: false, createdAt: Date.now() });
       
       alert("Sucesso!");
       limparForm();
-    } catch (e) { 
-      console.error(e);
-      alert("Erro ao salvar."); 
-    }
+    } catch (e) { alert("Erro ao salvar."); }
     setLoading(false);
   }
 
@@ -322,6 +341,7 @@ export default function CadastroProdutos() {
     setNome(""); setDescricao(""); setCategoria(""); setPrecoBasico(""); setCustoUnitario("");
     setPeso(""); setComprimento(""); setLargura(""); setAltura(""); setImagens([]); setEditId(null); setFiles([]); setPrecisaFrete(true);
     setOpcoesVar1(["Azul", "Rosa"]); setOpcoesVar2([]); setNomeVar1("Cor"); setNomeVar2(""); setTabelaPrecos({});
+    setRequisitos({ pedeNome: false, pedeIdade: false, pedeData: false, pedeObs: false });
   };
 
   const produtosFiltrados = produtos.filter(p => {
@@ -343,119 +363,42 @@ export default function CadastroProdutos() {
           </div>
         </div>
       )}
+
+      {showReqModal && (
+        <RequisitosModal 
+          config={requisitos} 
+          onSave={(novos: any) => { setRequisitos(novos); setShowReqModal(false); }} 
+          onClose={() => setShowReqModal(false)}
+        />
+      )}
       
-      {showVarModal && (
-        <div style={shopeeStyles.overlay}>
-          <div style={shopeeStyles.modal}>
-            <div style={shopeeStyles.header}>
-              <h3 style={shopeeStyles.title}>Grade de Variações</h3>
-              <button onClick={() => setShowVarModal(false)} style={shopeeStyles.closeBtn}>✕</button>
+      <VariacoesModal 
+        showVarModal={showVarModal}
+        setShowVarModal={setShowVarModal}
+        nomeVar1={nomeVar1} setNomeVar1={setNomeVar1}
+        opcoesVar1={opcoesVar1} setOpcoesVar1={setOpcoesVar1}
+        nomeVar2={nomeVar2} setNomeVar2={setNomeVar2}
+        opcoesVar2={opcoesVar2} setOpcoesVar2={setOpcoesVar2}
+        tabelaPrecos={tabelaPrecos}
+        handleInputTabela={handleInputTabela}
+        gerarCombinacoes={gerarCombinacoes}
+      />
+
+      <div style={styles.sidebar}>
+        {/* WIDGET DE LIMITES */}
+        <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '10px', marginBottom: '15px', border: '1px solid #e2e8f0' }}>
+          <p style={{ fontSize: '11px', margin: '0 0 8px 0', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Uso do Plano: {planoLojista}</p>
+          <div style={{ marginBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
+              <span>📦 Produtos</span>
+              <span>{produtos.length} / {limites.produtos}</span>
             </div>
-
-            <div style={shopeeStyles.content}>
-              <div style={shopeeStyles.section}>
-                <label style={shopeeStyles.label}>Variação 1 (ex: Modelo)</label>
-                <div style={shopeeStyles.varBox}>
-                  <input style={styles.input} value={nomeVar1} onChange={e => setNomeVar1(e.target.value)} placeholder="Ex: Modelo" />
-                  <div style={shopeeStyles.tagsContainer}>
-                    {opcoesVar1.map((op, idx) => (
-                      <div key={idx} style={shopeeStyles.tagInputWrapper}>
-                        <input style={shopeeStyles.tagInput} value={op} onChange={e => { const n = [...opcoesVar1]; n[idx] = e.target.value; setOpcoesVar1(n); }} />
-                        <button style={shopeeStyles.delTag} onClick={() => setOpcoesVar1(opcoesVar1.filter((_, i) => i !== idx))}>✕</button>
-                      </div>
-                    ))}
-                    <button style={shopeeStyles.addBtn} onClick={() => setOpcoesVar1([...opcoesVar1, ""])}>+ Adicionar</button>
-                  </div>
-                </div>
-              </div>
-
-              <div style={shopeeStyles.section}>
-                <label style={shopeeStyles.label}>Variação 2 (ex: Quantidade)</label>
-                <div style={shopeeStyles.varBox}>
-                  <input style={styles.input} value={nomeVar2} onChange={e => setNomeVar2(e.target.value)} placeholder="Ex: Quantidade" />
-                  <div style={shopeeStyles.tagsContainer}>
-                    {opcoesVar2.map((op, idx) => (
-                      <div key={idx} style={shopeeStyles.tagInputWrapper}>
-                        <input style={shopeeStyles.tagInput} value={op} onChange={e => { const n = [...opcoesVar2]; n[idx] = e.target.value; setOpcoesVar2(n); }} />
-                        <button style={shopeeStyles.delTag} onClick={() => setOpcoesVar2(opcoesVar2.filter((_, i) => i !== idx))}>✕</button>
-                      </div>
-                    ))}
-                    <button style={shopeeStyles.addBtn} onClick={() => setOpcoesVar2([...opcoesVar2, ""])}>+ Adicionar</button>
-                  </div>
-                </div>
-              </div>
-
-              <table style={{ ...shopeeStyles.table, borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={shopeeStyles.trHead}>
-                    <th style={{ ...shopeeStyles.th, width: '120px' }}>{nomeVar1 || "Variação 1"}</th>
-                    <th style={shopeeStyles.th}>{nomeVar2 || "Variação 2"}</th>
-                    <th style={shopeeStyles.th}>Preço (R$)</th>
-                    <th style={shopeeStyles.th}>Custo (R$)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {opcoesVar1.map((v1) => {
-                    const combsDesteGrupo = gerarCombinacoes().filter(c => c.v1 === v1);
-                    return combsDesteGrupo.map((c, idx) => (
-                      <tr key={c.key} style={{ ...shopeeStyles.tr, borderBottom: '1px solid #e2e8f0' }}>
-                        {idx === 0 && (
-                          <td rowSpan={combsDesteGrupo.length} style={{ ...shopeeStyles.td, textAlign: 'center', verticalAlign: 'middle', borderRight: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>{v1}</div>
-                            <div style={{ width: '60px', height: '60px', margin: '0 auto', border: '1px dashed #cbd5e1', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative', background: '#fff', overflow: 'hidden' }}>
-                              {tabelaPrecos[c.key]?.foto ? (
-                                <img src={tabelaPrecos[c.key].foto} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              ) : (
-                                <span style={{ color: '#ee4d2d', fontSize: '20px' }}>+</span>
-                              )}
-                              <input type="file" accept="image/*" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  const reader = new FileReader();
-                                  reader.onload = (event) => {
-                                    const img = new Image();
-                                    img.src = event.target?.result as string;
-                                    img.onload = () => {
-                                      const canvas = document.createElement('canvas');
-                                      const MAX = 600;
-                                      let w = img.width, h = img.height;
-                                      if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
-                                      else { if (h > MAX) { w *= MAX / h; h = MAX; } }
-                                      canvas.width = w; canvas.height = h;
-                                      const ctx = canvas.getContext('2d');
-                                      ctx?.drawImage(img, 0, 0, w, h);
-                                      const compressed = canvas.toDataURL('image/jpeg', 0.7);
-                                      combsDesteGrupo.forEach(comb => handleInputTabela(comb.key, "foto", compressed));
-                                    };
-                                  };
-                                  reader.readAsDataURL(file);
-                                }}
-                              />
-                            </div>
-                          </td>
-                        )}
-                        <td style={{ ...shopeeStyles.td, textAlign: 'center' }}>{c.v2 || "-"}</td>
-                        <td style={shopeeStyles.td}>
-                          <input style={shopeeStyles.tableInput} value={tabelaPrecos[c.key]?.preco || ""} onChange={e => handleInputTabela(c.key, "preco", e.target.value)} placeholder="0,00" />
-                        </td>
-                        <td style={shopeeStyles.td}>
-                          <input style={shopeeStyles.tableInput} value={tabelaPrecos[c.key]?.custo || ""} onChange={e => handleInputTabela(c.key, "custo", e.target.value)} placeholder="0,00" />
-                        </td>
-                      </tr>
-                    ));
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div style={shopeeStyles.footer}>
-              <button style={{ backgroundColor: '#ee4d2d', color: '#fff', border: 'none', padding: '10px 40px', cursor: 'pointer', borderRadius: '4px', fontWeight: 'bold' }} onClick={() => setShowVarModal(false)}>Confirmar</button>
+            <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min((produtos.length / limites.produtos) * 100, 100)}%`, height: '100%', background: produtos.length >= limites.produtos ? '#ef4444' : '#10b981', transition: '0.3s' }} />
             </div>
           </div>
         </div>
-      )}
 
-      <div style={styles.sidebar}>
         <h3 style={styles.sideTitle}>{editId ? "📝 Editar Produto" : "📦 Novo Produto"}</h3>
         <input style={styles.input} value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do Produto *" />
         
@@ -481,15 +424,20 @@ export default function CadastroProdutos() {
                 </div>
               </div>
             ))}
-            <button onClick={() => {
+            <button onClick={async () => {
+              if (listaCategorias.length >= limites.categorias) return alert("Limite de categorias atingido!");
               const n = prompt("Nome da nova categoria:"); 
-              if(n && uid) addDoc(collection(db,"lojistas",uid,"categorias"),{nome:n});
+              if(n && uid) await addDoc(collection(db,"lojistas",uid,"categorias"),{nome:n});
             }} style={styles.btnAddCat}>+ Adicionar</button>
           </div>
         )}
 
         <button onClick={() => setShowVarModal(true)} style={{...styles.btnUpload, border: '1px solid #ee4d2d', color: '#ee4d2d', fontWeight: 'bold', marginBottom: '10px'}}>
           {temVariaveisComPreco ? "⚙️ Editar Grade" : "➕ Adicionar Grade"}
+        </button>
+
+        <button onClick={() => setShowReqModal(true)} style={{...styles.btnUpload, border: '1px solid #d946ef', color: '#d946ef', fontWeight: 'bold', marginBottom: '10px'}}>
+          🎯 Personalização ({Object.values(requisitos || {}).filter(Boolean).length})
         </button>
 
         <div style={styles.freteBox}>
@@ -544,12 +492,7 @@ export default function CadastroProdutos() {
         {files.length > 0 && <button onClick={uploadImagens} style={styles.btnConfirmImgs}>Confirmar Fotos</button>}
 
         <button onClick={salvar} style={styles.btnSave}>{loading ? "Aguarde..." : editId ? "Atualizar Produto" : "Salvar Produto"}</button>
-        
-        {editId ? (
-          <button onClick={limparForm} style={styles.btnCancel}>✖ Cancelar Edição</button>
-        ) : (
-          <button onClick={limparForm} style={styles.btnCancel}>🧹 Limpar</button>
-        )}
+        <button onClick={limparForm} style={styles.btnCancel}>{editId ? "✖ Cancelar" : "🧹 Limpar"}</button>
       </div>
 
       <div style={styles.main}>
@@ -566,26 +509,28 @@ export default function CadastroProdutos() {
               <option value="Ocultos">🚫</option>
             </select>
             <button onClick={() => setModoMassa(!modoMassa)} style={{...styles.btnGeneric, background: modoMassa ? '#3b82f6' : '#fff', color: modoMassa ? '#fff' : '#3b82f6'}}>Massa</button>
+            
+            {/* BOTÃO DE EXPORTAÇÃO */}
+            <button 
+              onClick={exportarProdutosCSV} 
+              style={{...styles.btnGeneric, background: '#10b981', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '5px'}}
+            >
+              <FiDownload /> Exportar
+            </button>
           </div>
           
           {modoMassa && (
             <div style={styles.massPanel}>
               <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                <button 
-                  onClick={() => setSelecionados(selecionados.length === produtosFiltrados.length ? [] : produtosFiltrados.map(p => p.id))}
-                  style={{...styles.btnMass, borderColor: '#cbd5e1'}}
-                >
+                <button onClick={() => setSelecionados(selecionados.length === produtosFiltrados.length ? [] : produtosFiltrados.map(p => p.id))} style={{...styles.btnMass, borderColor: '#cbd5e1'}}>
                   {selecionados.length === produtosFiltrados.length ? "Desmarcar Todos" : "Selecionar Todos"}
                 </button>
-                <span style={{fontSize:'12px', fontWeight:'bold', color: '#1e40af'}}>
-                  {selecionados.length} itens selecionados
-                </span>
+                <span style={{fontSize:'12px', fontWeight:'bold', color: '#1e40af'}}>{selecionados.length} itens selecionados</span>
               </div>
-              
               <div style={{display:'flex', gap:'5px'}}>
                 <button onClick={() => acaoEmMassa('mostrar')} style={{...styles.btnMass, color: '#059669'}}>👁️ Mostrar</button>
                 <button onClick={() => acaoEmMassa('ocultar')} style={{...styles.btnMass, color: '#64748b'}}>🚫 Ocultar</button>
-                <button onClick={() => acaoEmMassa('preco')} style={{...styles.btnMass, color: '#3b82f6'}}>💰 Alterar Preço</button>
+                <button onClick={() => acaoEmMassa('preco')} style={{...styles.btnMass, color: '#3b82f6'}}>💰 Preço</button>
                 <button onClick={() => acaoEmMassa('excluir')} style={{...styles.btnMass, color:'#ef4444', borderColor: '#fecaca'}}>🗑️ Excluir</button>
               </div>
             </div>
@@ -599,7 +544,7 @@ export default function CadastroProdutos() {
               <div key={p.id} style={{...styles.card, opacity: p.ativo ? 1 : 0.6}}>
                 {p.destaque && <span style={styles.starBadge}>⭐</span>}
                 {modoMassa && <input type="checkbox" style={styles.cardCheck} checked={selecionados.includes(p.id)} onChange={e => e.target.checked ? setSelecionados([...selecionados, p.id]) : setSelecionados(selecionados.filter(id => id !== p.id))} />}
-                <img src={p.capa} style={styles.cardImg} />
+                <img src={p.capa} style={styles.cardImg} alt={p.nome} />
 
                 <div style={styles.cardBody}>
                   <h4 style={styles.cardTitle}>{p.nome}</h4>
@@ -614,6 +559,8 @@ export default function CadastroProdutos() {
                       setCustoUnitario(p.custoUnitario || ""); setImagens(p.imagens || []); setDescricao(p.descricao || "");
                       setPrecisaFrete(p.precisaFrete ?? true); setPeso(p.peso || ""); setComprimento(p.comprimento || "");
                       setLargura(p.largura || ""); setAltura(p.altura || "");
+                      setRequisitos(p.requisitos || { pedeNome: false, pedeIdade: false, pedeData: false, pedeObs: false });
+
                       if (p.variacoes) {
                         setNomeVar1(p.nomeVar1 || "Cor"); setNomeVar2(p.nomeVar2 || "");
                         const tab: any = {}; 

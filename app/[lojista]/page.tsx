@@ -18,7 +18,7 @@ export default function CatalogoPublico() {
   const [produtos, setProdutos] = useState<any[]>([]);
   const [categorias, setCategorias] = useState<string[]>([]);
   
-  const [status, setStatus] = useState<"carregando" | "erro" | "pronto">("carregando");
+  const [status, setStatus] = useState<"carregando" | "erro" | "suspenso" | "pronto">("carregando");
   const [search, setSearch] = useState("");
   const [categoriaAtiva, setCategoriaAtiva] = useState("todos");
   const [isMobile, setIsMobile] = useState(false);
@@ -27,7 +27,6 @@ export default function CatalogoPublico() {
   const { cart } = useCart();
   const cartCount = cart?.reduce((sum, item) => sum + item.qty, 0) || 0;
 
-  // 1. Monitor de Responsividade
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= 768);
     checkMobile();
@@ -35,7 +34,6 @@ export default function CatalogoPublico() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // 2. Inicialização e Listeners em Tempo Real
   useEffect(() => {
     if (!slugDaUrl) return;
 
@@ -44,7 +42,6 @@ export default function CatalogoPublico() {
 
     async function inicializar() {
       try {
-        // Busca o Lojista pelo Slug
         const qLojista = query(collection(db, "lojistas"), where("slug", "==", slugDaUrl.toLowerCase()));
         const snapLojista = await getDocs(qLojista);
         
@@ -55,15 +52,27 @@ export default function CatalogoPublico() {
 
         const docLojista = snapLojista.docs[0];
         const uid = docLojista.id;
-        setLojistaId(uid);
-        setDadosLoja(docLojista.data());
+        const dadosBase = docLojista.data();
 
-        // Listener: Status da Loja (Aberto/Fechado)
-        unsubLoja = onSnapshot(doc(db, "lojistas", uid, "config", "loja"), (snap) => {
+        // --- LÓGICA DE SUSPENSÃO E TESTE ---
+        const hoje = new Date();
+        const dataVenc = dadosBase.dataVencimento ? new Date(dadosBase.dataVencimento) : null;
+        
+        // Se status for suspenso OU se a data de vencimento já passou
+        if (dadosBase.status === "suspenso" || (dataVenc && hoje > dataVenc)) {
+          setStatus("suspenso");
+          return;
+        }
+
+        setLojistaId(uid);
+        setDadosLoja(dadosBase);
+
+        // Listener: Status da Loja Aberta/Fechada (Configurações internas)
+        unsubLoja = onSnapshot(doc(db, "lojistas", uid), (snap) => {
           if (snap.exists()) setLojaAberta(snap.data().lojaAberta ?? true);
         });
 
-        // Listener: Produtos da Subcoleção (Organizado e em Tempo Real)
+        // Listener: Produtos
         const qProd = query(
           collection(db, "lojistas", uid, "produtos"),
           where("ativo", "==", true),
@@ -73,26 +82,20 @@ export default function CatalogoPublico() {
         unsubProds = onSnapshot(qProd, (snap) => {
           const prods = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           setProdutos(prods);
-          
-          // Extração única de categorias
           const cats = Array.from(new Set(prods.map((p: any) => p.categoria).filter(Boolean)));
           setCategorias(cats as string[]);
           setStatus("pronto");
         }, (err) => {
-          console.error("Erro na busca de produtos:", err);
-          // Se der erro de índice, ele cai aqui.
-          setStatus("pronto"); // Mantém pronto para mostrar lista vazia em vez de erro travado
+          console.error(err);
+          setStatus("pronto");
         });
 
       } catch (e) {
-        console.error("Erro ao inicializar catálogo:", e);
         setStatus("erro");
       }
     }
 
     inicializar();
-
-    // Limpeza (Cleanup) ao fechar a página
     return () => {
       if (unsubLoja) unsubLoja();
       if (unsubProds) unsubProds();
@@ -108,8 +111,25 @@ export default function CatalogoPublico() {
     return matchSearch && matchCat;
   });
 
+  // --- RENDERS DE ESTADO ---
   if (status === "carregando") return <div style={styles.center}>Carregando catálogo...</div>;
   if (status === "erro") return <div style={styles.center}>Loja não encontrada ou link inválido.</div>;
+
+  if (status === "suspenso") {
+    return (
+      <div style={styles.suspensaoContainer}>
+        <div style={styles.suspensaoCard}>
+          <div style={styles.suspensaoIcon}>⚠️</div>
+          <h2 style={styles.suspensaoTitle}>LOJA EM MANUTENÇÃO</h2>
+          <p style={styles.suspensaoText}>
+            Esta loja está temporariamente indisponível para pedidos. <br/>
+            Tente novamente mais tarde ou entre em contato com o proprietário.
+          </p>
+          <button onClick={() => router.push('/')} style={styles.suspensaoBtn}>Voltar para o Início</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{...styles.page, overflowX: 'hidden'}}>
@@ -119,7 +139,6 @@ export default function CatalogoPublico() {
 
       <header style={styles.header}>
         <div style={styles.headerContainer}>
-          
           <div style={isMobile ? styles.mobileTop : styles.leftFixed}>
             <div style={styles.brandWrapper} onClick={() => router.push(`/${slugDaUrl}`)}>
               <div style={styles.logoBox}>
@@ -136,62 +155,40 @@ export default function CatalogoPublico() {
               onChange={(e) => setSearch(e.target.value)} 
               style={styles.searchInput} 
             />
-            
             <div style={styles.categoryRow}>
-              <button 
-                onClick={() => setCategoriaAtiva("todos")} 
-                style={{...styles.categoryBtn, 
-                  background: categoriaAtiva === "todos" ? "#2ecc71" : "#fff", 
-                  color: categoriaAtiva === "todos" ? "#fff" : "#333"}}
-              >TODOS</button>
+              <button onClick={() => setCategoriaAtiva("todos")} style={{...styles.categoryBtn, background: categoriaAtiva === "todos" ? "#2ecc71" : "#fff", color: categoriaAtiva === "todos" ? "#fff" : "#333"}}>TODOS</button>
               {categorias.map((cat) => (
-                <button 
-                  key={cat} 
-                  onClick={() => setCategoriaAtiva(cat)} 
-                  style={{...styles.categoryBtn, 
-                    background: normalize(categoriaAtiva) === normalize(cat) ? "#2ecc71" : "#fff", 
-                    color: normalize(categoriaAtiva) === normalize(cat) ? "#fff" : "#333"}}
-                >{cat.toUpperCase()}</button>
+                <button key={cat} onClick={() => setCategoriaAtiva(cat)} style={{...styles.categoryBtn, background: normalize(categoriaAtiva) === normalize(cat) ? "#2ecc71" : "#fff", color: normalize(categoriaAtiva) === normalize(cat) ? "#fff" : "#333"}}>{cat.toUpperCase()}</button>
               ))}
             </div>
           </div>
 
           <div style={isMobile ? styles.mobileBottom : styles.rightFixed}>
-            <button style={styles.cartBtn} onClick={() => router.push(`/${slugDaUrl}/carrinho`)}>
-                🛒 ({cartCount})
-            </button>
-            
+            <button style={styles.cartBtn} onClick={() => router.push(`/${slugDaUrl}/carrinho`)}>🛒 ({cartCount})</button>
             {dadosLoja?.instagram && (
               <div style={styles.instaBox}>
                  <a href={`https://instagram.com/${dadosLoja.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" style={styles.instaLink}>
-                   <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" style={styles.instaIcon} alt="Insta" />
+                    <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" style={styles.instaIcon} alt="Insta" />
                  </a>
               </div>
             )}
           </div>
-
         </div>
       </header>
 
       <main style={{...styles.grid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(6, 1fr)'}}>
-        {produtosFiltrados.length > 0 ? (
-          produtosFiltrados.map((p) => (
-            <div key={p.id} style={styles.card} onClick={() => router.push(`/produto/${p.id}?loja=${lojistaId}`)}>
-              <div style={styles.imgWrapper}>
-                <img src={p.capa} style={{...styles.img, height: isMobile ? 150 : 180}} alt={p.nome} />
-              </div>
-              <div style={styles.info}>
-                <h3 style={styles.productName}>{p.nome}</h3>
-                <div style={styles.priceValue}>R$ {p.precoBasico || p.preco}</div>
-                <button style={styles.viewBtn}>Ver Detalhes</button>
-              </div>
+        {produtosFiltrados.map((p) => (
+          <div key={p.id} style={styles.card} onClick={() => router.push(`/produto/${p.id}?loja=${lojistaId}`)}>
+            <div style={styles.imgWrapper}>
+              <img src={p.capa} style={{...styles.img, height: isMobile ? 150 : 180}} alt={p.nome} />
             </div>
-          ))
-        ) : (
-          <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '50px', color: '#94a3b8' }}>
-            Nenhum produto encontrado.
+            <div style={styles.info}>
+              <h3 style={styles.productName}>{p.nome}</h3>
+              <div style={styles.priceValue}>R$ {p.precoBasico || p.preco}</div>
+              <button style={styles.viewBtn}>Ver Detalhes</button>
+            </div>
           </div>
-        )}
+        ))}
       </main>
 
       <footer style={styles.footer}>
@@ -204,6 +201,15 @@ export default function CatalogoPublico() {
 const styles: { [key: string]: React.CSSProperties } = {
   center: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#64748b' },
   page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "sans-serif" },
+  
+  // ESTILOS DA SUSPENSÃO
+  suspensaoContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f1f5f9', padding: '20px' },
+  suspensaoCard: { background: '#fff', padding: '40px', borderRadius: '32px', textAlign: 'center', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' },
+  suspensaoIcon: { fontSize: '50px', marginBottom: '20px' },
+  suspensaoTitle: { color: '#1e293b', fontWeight: '900', fontSize: '20px', marginBottom: '10px' },
+  suspensaoText: { color: '#64748b', fontSize: '14px', lineHeight: '1.6', marginBottom: '25px' },
+  suspensaoBtn: { background: '#0f172a', color: '#fff', border: 'none', padding: '12px 25px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' },
+
   closedBar: { background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center", fontWeight: "bold", fontSize: "12px" },
   header: { background: "#fff", borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 1000, padding: '10px 0' },
   headerContainer: { display: 'flex', flexWrap: 'wrap', maxWidth: '1400px', margin: '0 auto', padding: '0 20px', alignItems: 'center', justifyContent: 'space-between' },
@@ -221,7 +227,6 @@ const styles: { [key: string]: React.CSSProperties } = {
   rightFixed: { width: '250px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '15px' },
   cartBtn: { background: "#2ecc71", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "20px", fontWeight: "bold", cursor: "pointer" },
   instaBox: { display: 'flex', alignItems: 'center' },
-  instaLink: { display: 'flex', alignItems: 'center' },
   instaIcon: { height: '24px', width: '24px' },
   grid: { display: "grid", gap: '15px', padding: '20px', maxWidth: '1400px', margin: '0 auto' },
   card: { background: "#fff", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", cursor: 'pointer', transition: 'transform 0.2s' },
