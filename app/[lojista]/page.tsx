@@ -1,241 +1,309 @@
 "use client";
-
-import { useEffect, useState } from "react";
+import React, { useState, useEffect } from 'react';
+import { db } from "@/lib/firebase"; 
+import { collection, onSnapshot, query, where, getDocs, limit } from "firebase/firestore";
 import { useParams, useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
-import { 
-  collection, query, where, getDocs, onSnapshot, orderBy, doc 
-} from "firebase/firestore";
-import { useCart } from "@/app/context/CartContext";
+import { FiInstagram, FiFacebook, FiYoutube, FiGlobe } from "react-icons/fi";
+import { FaTiktok } from "react-icons/fa";
 
-export default function CatalogoPublico() {
+export default function PaginaFinal() {
   const params = useParams();
   const router = useRouter();
-  const slugDaUrl = params.lojista as string;
-
-  const [lojistaId, setLojistaId] = useState<string | null>(null);
-  const [dadosLoja, setDadosLoja] = useState<any>(null);
-  const [produtos, setProdutos] = useState<any[]>([]);
-  const [categorias, setCategorias] = useState<string[]>([]);
+  const [aberto, setAberto] = useState(false);
   
-  const [status, setStatus] = useState<"carregando" | "erro" | "suspenso" | "pronto">("carregando");
-  const [search, setSearch] = useState("");
-  const [categoriaAtiva, setCategoriaAtiva] = useState("todos");
-  const [isMobile, setIsMobile] = useState(false);
-  const [lojaAberta, setLojaAberta] = useState(true);
+  const [produtos, setProdutos] = useState([]);
+  const [categoriasFirebase, setCategoriasFirebase] = useState([]);
+  const [dadosLoja, setDadosLoja] = useState({ slug: "", logoUrl: "", celular: "", nomeLoja: "", redesSociais: [], tema: {} });
+  const [lojistaId, setLojistaId] = useState(null);
+  const [carrinhoCount, setCarrinhoCount] = useState(0);
 
-  const { cart } = useCart();
-  const cartCount = cart?.reduce((sum, item) => sum + item.qty, 0) || 0;
+  const [subCatAberta, setSubCatAberta] = useState(null);
+
+  const [bannerAtivo, setBannerAtivo] = useState(0);
+  const banners = [
+    dadosLoja.banner1 || "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=1500",
+    dadosLoja.banner2 || "https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1500",
+    dadosLoja.banner3 || "https://images.unsplash.com/photo-1472851294608-062f824d29cc?q=80&w=1500"
+  ];
+
+  const renderIcone = (plataforma) => {
+    switch (plataforma) {
+      case 'instagram': return <FiInstagram size={18} />;
+      case 'facebook': return <FiFacebook size={18} />;
+      case 'tiktok': return <FaTiktok size={18} />;
+      case 'youtube': return <FiYoutube size={18} />;
+      default: return <FiGlobe size={18} />;
+    }
+  };
 
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
-
-  useEffect(() => {
-    if (!slugDaUrl) return;
-
-    let unsubLoja: () => void;
-    let unsubProds: () => void;
-
-    async function inicializar() {
-      try {
-        const qLojista = query(collection(db, "lojistas"), where("slug", "==", slugDaUrl.toLowerCase()));
-        const snapLojista = await getDocs(qLojista);
-        
-        if (snapLojista.empty) {
-          setStatus("erro");
-          return;
-        }
-
-        const docLojista = snapLojista.docs[0];
-        const uid = docLojista.id;
-        const dadosBase = docLojista.data();
-
-        // --- LÓGICA DE SUSPENSÃO E TESTE ---
-        const hoje = new Date();
-        const dataVenc = dadosBase.dataVencimento ? new Date(dadosBase.dataVencimento) : null;
-        
-        // Se status for suspenso OU se a data de vencimento já passou
-        if (dadosBase.status === "suspenso" || (dataVenc && hoje > dataVenc)) {
-          setStatus("suspenso");
-          return;
-        }
-
-        setLojistaId(uid);
-        setDadosLoja(dadosBase);
-
-        // Listener: Status da Loja Aberta/Fechada (Configurações internas)
-        unsubLoja = onSnapshot(doc(db, "lojistas", uid), (snap) => {
-          if (snap.exists()) setLojaAberta(snap.data().lojaAberta ?? true);
+    async function carregarDono() {
+      const slugUrl = params.slug || params.lojista;
+      const q = query(collection(db, "lojistas"), where("slug", "==", slugUrl), limit(1));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const docSnap = querySnapshot.docs[0];
+        setLojistaId(docSnap.id);
+        const d = docSnap.data();
+        setDadosLoja({
+          ...d,
+          slug: d.slug || "",
+          logoUrl: d.logoUrl || "",
+          celular: d.celular || "",
+          nomeLoja: d.nomeLoja || d.slug,
+          redesSociais: d.redesSociais || [],
+          tema: d.tema || {} // Captura o tema salvo
         });
-
-        // Listener: Produtos
-        const qProd = query(
-          collection(db, "lojistas", uid, "produtos"),
-          where("ativo", "==", true),
-          orderBy("createdAt", "desc")
-        );
-
-        unsubProds = onSnapshot(qProd, (snap) => {
-          const prods = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          setProdutos(prods);
-          const cats = Array.from(new Set(prods.map((p: any) => p.categoria).filter(Boolean)));
-          setCategorias(cats as string[]);
-          setStatus("pronto");
-        }, (err) => {
-          console.error(err);
-          setStatus("pronto");
-        });
-
-      } catch (e) {
-        setStatus("erro");
       }
     }
+    carregarDono();
+    atualizarContadorCarrinho();
+  }, [params.slug, params.lojista]);
 
-    inicializar();
-    return () => {
-      if (unsubLoja) unsubLoja();
-      if (unsubProds) unsubProds();
-    };
-  }, [slugDaUrl]);
+  useEffect(() => {
+    if (!lojistaId) return;
 
-  // 3. Lógica de Filtro
-  const normalize = (text: string) => (text || "").toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  
-  const produtosFiltrados = produtos.filter((p) => {
-    const matchSearch = normalize(p.nome).includes(normalize(search));
-    const matchCat = categoriaAtiva === "todos" || normalize(p.categoria) === normalize(categoriaAtiva);
-    return matchSearch && matchCat;
-  });
+    const unsubCat = onSnapshot(collection(db, `lojistas/${lojistaId}/categorias`), (snapshot) => {
+      const listaCategorias = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setCategoriasFirebase(listaCategorias);
+    });
 
-  // --- RENDERS DE ESTADO ---
-  if (status === "carregando") return <div style={styles.center}>Carregando catálogo...</div>;
-  if (status === "erro") return <div style={styles.center}>Loja não encontrada ou link inválido.</div>;
+    const unsubProd = onSnapshot(collection(db, `lojistas/${lojistaId}/produtos`), (snapshot) => {
+      const todos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setProdutos(todos.filter(p => p.destaque === true));
+    });
 
-  if (status === "suspenso") {
-    return (
-      <div style={styles.suspensaoContainer}>
-        <div style={styles.suspensaoCard}>
-          <div style={styles.suspensaoIcon}>⚠️</div>
-          <h2 style={styles.suspensaoTitle}>LOJA EM MANUTENÇÃO</h2>
-          <p style={styles.suspensaoText}>
-            Esta loja está temporariamente indisponível para pedidos. <br/>
-            Tente novamente mais tarde ou entre em contato com o proprietário.
-          </p>
-          <button onClick={() => router.push('/')} style={styles.suspensaoBtn}>Voltar para o Início</button>
-        </div>
-      </div>
-    );
-  }
+    const timer = setInterval(() => {
+      setBannerAtivo((prev) => (prev + 1) % 3);
+    }, 5000);
+
+    return () => { unsubCat(); unsubProd(); clearInterval(timer); };
+  }, [lojistaId]);
+
+  const atualizarContadorCarrinho = () => {
+    const salvo = localStorage.getItem(`carrinho_${params.slug || params.lojista}`);
+    if (salvo) {
+      const itens = JSON.parse(salvo);
+      const total = itens.reduce((acc, item) => acc + item.quantidade, 0);
+      setCarrinhoCount(total);
+    }
+  };
+
+  const adicionarAoCarrinho = (e, produto) => {
+    e.stopPropagation();
+    const key = `carrinho_${params.slug || params.lojista}`;
+    const salvo = localStorage.getItem(key);
+    let itens = salvo ? JSON.parse(salvo) : [];
+    const index = itens.findIndex(i => i.id === produto.id);
+    if (index > -1) {
+      itens[index].quantidade += 1;
+    } else {
+      itens.push({ ...produto, quantidade: 1 });
+    }
+    localStorage.setItem(key, JSON.stringify(itens));
+    atualizarContadorCarrinho();
+    alert("Produto adicionado!");
+  };
+
+  const navegarParaProduto = (id) => {
+    router.push(`/${params.slug || params.lojista}/produto/${id}`);
+  };
+
+  // --- LÓGICA DE PERSONALIZAÇÃO APLICADA AQUI ---
+  const config = {
+    nomeLoja: dadosLoja.nomeLoja || "Carregando...",
+    corDestaque: dadosLoja.tema?.corPrincipal || "#FFCC80",    
+    corSecundaria: dadosLoja.tema?.corSecundaria || "#FDF5EB", 
+    corFundoSite: dadosLoja.tema?.corFundo || "#FFF9F2",   
+    corTextoCard: dadosLoja.tema?.corTextoCard || "#8B5E3C", 
+    linkWhatsapp: `https://wa.me/${dadosLoja.celular.replace(/\D/g, '')}`,
+    backgroundPadrao: "white"  
+  };
+
+  const navegarParaCategoria = (catNome) => {
+    const lojista = params.slug || params.lojista;
+    router.push(`/${lojista}/PagCategoria?cat=${catNome}`);
+  };
 
   return (
-    <div style={{...styles.page, overflowX: 'hidden'}}>
-      {!lojaAberta && (
-        <div style={styles.closedBar}>🚩 No momento estamos em recesso. Apenas visualização disponível.</div>
-      )}
+    <div style={{ margin: 0, padding: 0, width: '100%', overflowX: 'hidden', backgroundColor: config.corFundoSite, fontFamily: 'sans-serif', position: 'relative' }}>
+      
+      <style jsx global>{`
+        html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; overflow-x: hidden !important; position: relative; }
+        * { box-sizing: border-box !important; }
+      `}</style>
 
-      <header style={styles.header}>
-        <div style={styles.headerContainer}>
-          <div style={isMobile ? styles.mobileTop : styles.leftFixed}>
-            <div style={styles.brandWrapper} onClick={() => router.push(`/${slugDaUrl}`)}>
-              <div style={styles.logoBox}>
-                <img src={dadosLoja?.logoUrl || "/logo.png"} style={styles.logoImg} alt="Logo" />
-              </div>
-              <h1 style={styles.brandName}>{dadosLoja?.nomeLoja || slugDaUrl}</h1>
+      {/* --- MENU LATERAL MOBILE --- */}
+      <div style={{ position: 'fixed', top: 0, left: aberto ? 0 : '-100%', width: '80%', height: '100vh', backgroundColor: 'white', zIndex: 10000, transition: '0.4s cubic-bezier(0.4, 0, 0.2, 1)', padding: '20px', boxShadow: '10px 0 30px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ textAlign: 'right', fontSize: '30px', cursor: 'pointer', marginBottom: '20px' }} onClick={() => setAberto(false)}>✕</div>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {categoriasFirebase.map(cat => (
+            <div key={cat.id}>
+                <span onClick={() => { setAberto(false); navegarParaCategoria(cat.nome); }} style={{ fontSize: '18px', fontWeight: 'bold', color: config.corTextoCard, borderBottom: '1px solid #f0f0f0', paddingBottom: '10px', cursor: 'pointer', display: 'block' }}>{cat.nome}</span>
             </div>
-          </div>
+          ))}
+        </nav>
+      </div>
 
-          <div style={styles.centerFlow}>
-            <input 
-              placeholder="O que você procura?" 
-              value={search} 
-              onChange={(e) => setSearch(e.target.value)} 
-              style={styles.searchInput} 
-            />
-            <div style={styles.categoryRow}>
-              <button onClick={() => setCategoriaAtiva("todos")} style={{...styles.categoryBtn, background: categoriaAtiva === "todos" ? "#2ecc71" : "#fff", color: categoriaAtiva === "todos" ? "#fff" : "#333"}}>TODOS</button>
-              {categorias.map((cat) => (
-                <button key={cat} onClick={() => setCategoriaAtiva(cat)} style={{...styles.categoryBtn, background: normalize(categoriaAtiva) === normalize(cat) ? "#2ecc71" : "#fff", color: normalize(categoriaAtiva) === normalize(cat) ? "#fff" : "#333"}}>{cat.toUpperCase()}</button>
-              ))}
+      {aberto && ( <div onClick={() => setAberto(false)} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999 }} /> )}
+
+      {/* --- HEADER DESKTOP --- */}
+      <div className="desktop-header" style={{ position: 'relative', width: '100%', height: '115px' }}>
+        <div style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 1 }}>
+          <div style={{ backgroundColor: config.corDestaque, height: '60px', width: '100%' }}></div>
+          <div style={{ backgroundColor: config.corSecundaria, height: '55px', width: '100%' }}></div>
+        </div>
+
+        <div style={{ position: 'absolute', right: '60px', top: '18px', zIndex: 20, display: 'flex', gap: '15px' }}>
+            {dadosLoja.redesSociais && dadosLoja.redesSociais.map((rede, index) => (
+                <a key={index} href={rede.url.startsWith('http') ? rede.url : `https://${rede.url}`} target="_blank" rel="noreferrer" style={{ color: 'white', textDecoration: 'none' }}>
+                    {renderIcone(rede.plataforma)}
+                </a>
+            ))}
+        </div>
+
+        <div style={{ position: 'absolute', left: '40px', top: '15px', zIndex: 10, display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <div style={{ border: '1px solid black', width: '90px', height: '90px', backgroundColor: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {dadosLoja.logoUrl ? <img src={dadosLoja.logoUrl} style={{width: '100%', height: '100%', objectFit: 'contain'}} /> : "Logo"}
+          </div>
+          <span style={{ fontSize: '22px', color: 'white', fontWeight: 'bold' }}>{config.nomeLoja}</span>
+        </div>
+        
+        <div style={{ position: 'absolute', top: '78px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '25px', color: config.corTextoCard, fontSize: '13px', whiteSpace: 'nowrap', fontWeight: 'bold', textTransform: 'uppercase', zIndex: 10 }}>
+          {categoriasFirebase.length > 0 ? categoriasFirebase.map(cat => ( 
+            <div 
+              key={cat.id} 
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setSubCatAberta(cat.id)}
+              onMouseLeave={() => setSubCatAberta(null)}
+            >
+                <span style={{cursor: 'pointer'}} onClick={() => navegarParaCategoria(cat.nome)}>{cat.nome}</span>
+                
+                {subCatAberta === cat.id && cat.subcategorias && cat.subcategorias.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: '0', backgroundColor: 'white', border: '1px solid #ddd', padding: '10px', minWidth: '150px', display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 100, boxShadow: '0 4px 10px rgba(0,0,0,0.1)', marginTop: '5px', textTransform: 'none' }}>
+                        {cat.subcategorias.map((sub, i) => (
+                            <span 
+                                key={i} 
+                                onClick={() => router.push(`/${params.slug || params.lojista}/PagCategoria?cat=${cat.nome}&sub=${sub}`)}
+                                style={{ cursor: 'pointer', color: '#555', fontWeight: 'normal', fontSize: '12px' }}
+                                onMouseOver={(e) => e.currentTarget.style.color = config.corTextoCard}
+                                onMouseOut={(e) => e.currentTarget.style.color = '#555'}
+                            >
+                                {sub}
+                            </span>
+                        ))}
+                    </div>
+                )}
             </div>
-          </div>
+          )) : <span style={{cursor: 'pointer'}} onClick={() => navegarParaCategoria("Início")}>INÍCIO</span>}
+        </div>
 
-          <div style={isMobile ? styles.mobileBottom : styles.rightFixed}>
-            <button style={styles.cartBtn} onClick={() => router.push(`/${slugDaUrl}/carrinho`)}>🛒 ({cartCount})</button>
-            {dadosLoja?.instagram && (
-              <div style={styles.instaBox}>
-                 <a href={`https://instagram.com/${dadosLoja.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" style={styles.instaLink}>
-                    <img src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png" style={styles.instaIcon} alt="Insta" />
-                 </a>
+        <div style={{ position: 'absolute', right: '60px', top: '60px', zIndex: 10, cursor: 'pointer' }} onClick={() => router.push(`/${params.slug || params.lojista}/carrinho`)}>
+          <span style={{ fontSize: '30px', color: config.corTextoCard }}>🛒</span>
+          {carrinhoCount > 0 && (
+            <div style={{ position: 'absolute', top: '-5px', right: '-10px', backgroundColor: 'red', color: 'white', borderRadius: '50%', width: '20px', height: '20px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {carrinhoCount}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* --- HEADER MOBILE --- */}
+      <div className="mobile-header">
+        <div style={{ backgroundColor: config.backgroundPadrao, padding: '15px', display: 'flex', alignItems: 'center', gap: '10px', width: '100%' }}>
+          <div style={{ border: '1px solid black', width: '50px', height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'white', overflow: 'hidden' }}>
+            {dadosLoja.logoUrl ? <img src={dadosLoja.logoUrl} style={{width: '100%', height: '100%', objectFit: 'contain'}} /> : <b style={{fontSize: '10px'}}>Logo</b>}
+          </div>
+          <span style={{ fontSize: '18px', fontWeight: '500' }}>{config.nomeLoja}</span>
+        </div>
+        <div style={{ backgroundColor: config.corDestaque, height: '60px', position: 'relative', display: 'flex', alignItems: 'center', padding: '0 15px', width: '100%' }}>
+          <span onClick={() => setAberto(true)} style={{ fontSize: '30px', color: 'white', cursor: 'pointer' }}>☰</span>
+          <div style={{ width: '60%', margin: '0 auto', position: 'relative' }}>
+            <input type="text" placeholder="Buscar..." style={{ width: '100%', borderRadius: '25px', border: 'none', padding: '8px 15px', fontSize: '14px' }} />
+          </div>
+          <div onClick={() => router.push(`/${params.slug || params.lojista}/carrinho`)} style={{ position: 'relative', cursor: 'pointer' }}>
+            <span style={{ fontSize: '26px', color: 'white' }}>🛒</span>
+            {carrinhoCount > 0 && (
+              <div style={{ position: 'absolute', top: '-5px', right: '-5px', backgroundColor: 'red', color: 'white', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {carrinhoCount}
               </div>
             )}
           </div>
         </div>
-      </header>
+      </div>
 
-      <main style={{...styles.grid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(6, 1fr)'}}>
-        {produtosFiltrados.map((p) => (
-          <div key={p.id} style={styles.card} onClick={() => router.push(`/produto/${p.id}?loja=${lojistaId}`)}>
-            <div style={styles.imgWrapper}>
-              <img src={p.capa} style={{...styles.img, height: isMobile ? 150 : 180}} alt={p.nome} />
-            </div>
-            <div style={styles.info}>
-              <h3 style={styles.productName}>{p.nome}</h3>
-              <div style={styles.priceValue}>R$ {p.precoBasico || p.preco}</div>
-              <button style={styles.viewBtn}>Ver Detalhes</button>
-            </div>
-          </div>
+      {/* --- BANNER ITINERANTE --- */}
+      <div style={{ width: '100%', height: '60vh', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', textAlign: 'center' }}>
+        {banners.map((img, idx) => (
+          <div
+            key={idx}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              backgroundImage: `url('${img}')`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              transition: 'opacity 1s ease-in-out',
+              opacity: bannerAtivo === idx ? 1 : 0,
+              zIndex: bannerAtivo === idx ? 1 : 0
+            }}
+          />
         ))}
-      </main>
+        <div style={{ position: 'relative', zIndex: 10, padding: '0 20px' }}>
+          <p style={{ fontSize: '16px', textShadow: '1px 1px 4px rgba(0,0,0,0.5)' }}>As últimas tendências estão aqui</p>
+          <h1 style={{ fontSize: 'clamp(32px, 10vw, 85px)', margin: '10px 0', letterSpacing: '4px', fontWeight: 'normal', textShadow: '2px 2px 8px rgba(0,0,0,0.5)' }}>
+            {config.nomeLoja.toUpperCase()}
+          </h1>
+        </div>
+      </div>
 
-      <footer style={styles.footer}>
-        <p style={styles.footerText}>© {dadosLoja?.nomeLoja || slugDaUrl}</p>
+      {/* --- VITRINE --- */}
+      <div style={{ textAlign: 'center', padding: '40px 0' }}>
+        <h2 style={{ color: config.corTextoCard, fontWeight: 'normal', fontSize: '20px', marginBottom: '30px' }}>Lançamentos que você vai amar</h2>
+        <div className="grid-produtos">
+          {produtos.map((prod) => (
+            <div key={prod.id} onClick={() => navegarParaProduto(prod.id)} style={{ backgroundColor: 'white', padding: '10px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer' }}>
+              <img src={prod.capa || "https://via.placeholder.com/500"} style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', borderRadius: '5px' }} />
+              <p style={{ margin: '10px 0 0', fontSize: '13px', color: config.corTextoCard, fontWeight: '500' }}>{prod.nome}</p>
+              <p style={{ margin: '5px 0', fontWeight: 'bold', fontSize: '16px', color: config.corTextoCard }}>R$ {prod.precoBasico || "0,00"}</p>
+              <button onClick={(e) => adicionarAoCarrinho(e, prod)} style={{ backgroundColor: config.corDestaque, border: 'none', width: '100%', padding: '8px', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px', color: 'white' }}>ADICIONAR</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* --- RODAPÉ DINÂMICO --- */}
+      <footer style={{ backgroundColor: config.corDestaque, padding: '40px 20px', color: 'white', textAlign: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', fontSize: '24px', marginBottom: '15px' }}>
+            {dadosLoja.redesSociais && dadosLoja.redesSociais.map((rede, index) => (
+                <a key={index} href={rede.url.startsWith('http') ? rede.url : `https://${rede.url}`} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>
+                    {renderIcone(rede.plataforma)}
+                </a>
+            ))}
+        </div>
+        <p style={{ fontSize: '14px', fontWeight: 'bold' }}>{config.nomeLoja}</p>
+        <p style={{ fontSize: '12px', opacity: 0.8 }}>© {new Date().getFullYear()} - Todos os direitos reservados.</p>
       </footer>
+
+      <a href={config.linkWhatsapp} target="_blank" style={{ position: 'fixed', bottom: '25px', right: '25px', backgroundColor: '#25D366', color: 'white', width: '60px', height: '60px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', boxShadow: '0 4px 15px rgba(0,0,0,0.3)', zIndex: 9999, textDecoration: 'none' }}> 📞 </a>
+
+      <style jsx>{`
+        .mobile-header { display: flex; flex-direction: column; width: 100%; }
+        .desktop-header { display: none; }
+        .grid-produtos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; padding: 0 15px; }
+        @media (min-width: 1024px) {
+          .mobile-header { display: none; }
+          .desktop-header { display: flex; }
+          .grid-produtos { grid-template-columns: repeat(4, 1fr); max-width: 1200px; margin: 0 auto; }
+        }
+      `}</style>
     </div>
   );
 }
-
-const styles: { [key: string]: React.CSSProperties } = {
-  center: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#64748b' },
-  page: { background: "#f8fafc", minHeight: "100vh", fontFamily: "sans-serif" },
-  
-  // ESTILOS DA SUSPENSÃO
-  suspensaoContainer: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f1f5f9', padding: '20px' },
-  suspensaoCard: { background: '#fff', padding: '40px', borderRadius: '32px', textAlign: 'center', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' },
-  suspensaoIcon: { fontSize: '50px', marginBottom: '20px' },
-  suspensaoTitle: { color: '#1e293b', fontWeight: '900', fontSize: '20px', marginBottom: '10px' },
-  suspensaoText: { color: '#64748b', fontSize: '14px', lineHeight: '1.6', marginBottom: '25px' },
-  suspensaoBtn: { background: '#0f172a', color: '#fff', border: 'none', padding: '12px 25px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' },
-
-  closedBar: { background: "#e74c3c", color: "#fff", padding: "10px", textAlign: "center", fontWeight: "bold", fontSize: "12px" },
-  header: { background: "#fff", borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 1000, padding: '10px 0' },
-  headerContainer: { display: 'flex', flexWrap: 'wrap', maxWidth: '1400px', margin: '0 auto', padding: '0 20px', alignItems: 'center', justifyContent: 'space-between' },
-  leftFixed: { width: '250px' },
-  mobileTop: { width: '100%', marginBottom: '10px', display: 'flex', justifyContent: 'center' },
-  mobileBottom: { width: '100%', marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '20px' },
-  brandWrapper: { display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' },
-  logoBox: { background: '#fff', padding: '3px', borderRadius: '50%', border: '1px solid #f1f5f9' },
-  logoImg: { height: '45px', width: '45px', borderRadius: '50%', objectFit: 'cover' },
-  brandName: { fontWeight: 'bold', fontSize: '16px', color: '#334155' },
-  centerFlow: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', minWidth: '300px' },
-  searchInput: { width: "100%", maxWidth: '400px', padding: "10px 20px", borderRadius: "20px", border: "1px solid #e2e8f0", background: '#f8fafc', outline: 'none', fontSize: '14px' },
-  categoryRow: { display: 'flex', gap: '8px', overflowX: 'auto', maxWidth: '100%', padding: '5px 0' },
-  categoryBtn: { border: "1px solid #e2e8f0", padding: "6px 12px", borderRadius: "15px", cursor: "pointer", fontSize: "10px", fontWeight: "bold", whiteSpace: "nowrap", transition: '0.2s' },
-  rightFixed: { width: '250px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '15px' },
-  cartBtn: { background: "#2ecc71", color: "#fff", border: "none", padding: "10px 20px", borderRadius: "20px", fontWeight: "bold", cursor: "pointer" },
-  instaBox: { display: 'flex', alignItems: 'center' },
-  instaIcon: { height: '24px', width: '24px' },
-  grid: { display: "grid", gap: '15px', padding: '20px', maxWidth: '1400px', margin: '0 auto' },
-  card: { background: "#fff", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", cursor: 'pointer', transition: 'transform 0.2s' },
-  imgWrapper: { background: '#f1f5f9', overflow: 'hidden' },
-  img: { width: "100%", objectFit: "cover" },
-  info: { padding: "12px", textAlign: "center" },
-  productName: { color: "#334155", fontSize: '13px', fontWeight: '600', height: '32px', marginBottom: '5px' },
-  priceValue: { color: "#2ecc71", fontWeight: "800", fontSize: '16px', margin: '5px 0' },
-  viewBtn: { background: "#f1f5f9", color: "#64748b", border: "none", padding: "8px", borderRadius: "8px", fontSize: "11px", fontWeight: "bold", width: "100%", cursor: 'pointer' },
-  footer: { padding: '30px', textAlign: 'center', borderTop: '1px solid #e2e8f0', marginTop: '20px' },
-  footerText: { color: '#94a3b8', fontSize: '11px' }
-};

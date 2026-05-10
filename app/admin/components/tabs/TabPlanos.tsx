@@ -6,7 +6,8 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import imageCompression from "browser-image-compression";
 import { 
   FiAward, FiUploadCloud, FiZap, FiTruck, FiCreditCard, 
-  FiStar, FiShoppingBag, FiDollarSign, FiCalendar, FiClock 
+  FiStar, FiShoppingBag, FiDollarSign, FiCalendar, FiClock,
+  FiLayers // Ícone para Personalização
 } from "react-icons/fi";
 
 interface TabPlanosProps {
@@ -81,9 +82,7 @@ export default function TabPlanos({ planos, setPlanos, mostrarAviso }: TabPlanos
             PLANO {key.toUpperCase()}
           </h3>
 
-          {/* ÁREA FINANCEIRA E TESTE */}
           <div style={styles.containerFinanceiro}>
-            {/* VALOR MENSAL */}
             <div style={styles.inputGroupPreco}>
               <label style={styles.labelPreco}>ASSINATURA MENSAL</label>
               <div style={styles.wrapperInputIcon}>
@@ -97,7 +96,6 @@ export default function TabPlanos({ planos, setPlanos, mostrarAviso }: TabPlanos
               </div>
             </div>
 
-            {/* VALOR ANUAL */}
             <div style={{...styles.inputGroupPreco, background: '#f0f9ff', border: '1px solid #bae6fd'}}>
               <label style={{...styles.labelPreco, color: '#0369a1'}}>ASSINATURA ANUAL</label>
               <div style={styles.wrapperInputIcon}>
@@ -111,7 +109,6 @@ export default function TabPlanos({ planos, setPlanos, mostrarAviso }: TabPlanos
               </div>
             </div>
 
-            {/* NOVO: DIAS DE TESTE POR PLANO */}
             <div style={{...styles.inputGroupPreco, background: '#fff7ed', border: '1px solid #ffedd5'}}>
               <label style={{...styles.labelPreco, color: '#9a3412'}}>PERÍODO DE TESTE (DIAS)</label>
               <div style={styles.wrapperInputIcon}>
@@ -134,7 +131,7 @@ export default function TabPlanos({ planos, setPlanos, mostrarAviso }: TabPlanos
             <label style={styles.label}>LIMITE PRODUTOS</label>
             <input 
               type="number" 
-              value={planos[key].produtos} 
+              value={planos[key].produtos || 0} 
               onChange={(e) => setPlanos({ ...planos, [key]: { ...planos[key], produtos: Number(e.target.value) } })} 
               style={styles.input} 
             />
@@ -144,7 +141,7 @@ export default function TabPlanos({ planos, setPlanos, mostrarAviso }: TabPlanos
             <label style={styles.label}>LIMITE CATEGORIAS</label>
             <input 
               type="number" 
-              value={planos[key].categorias} 
+              value={planos[key].categorias || 0} 
               onChange={(e) => setPlanos({ ...planos, [key]: { ...planos[key], categorias: Number(e.target.value) } })} 
               style={styles.input} 
             />
@@ -166,23 +163,32 @@ export default function TabPlanos({ planos, setPlanos, mostrarAviso }: TabPlanos
             <p style={styles.recursosTitle}>RECURSOS HABILITADOS</p>
             <label style={styles.checkRow}>
               <div style={styles.checkLabel}><FiCreditCard /> Mercado Pago</div>
-              <input type="checkbox" checked={planos[key].temGateway} onChange={() => toggleRecurso(key, 'temGateway')} />
+              <input type="checkbox" checked={!!planos[key].temGateway} onChange={() => toggleRecurso(key, 'temGateway')} />
             </label>
             <label style={styles.checkRow}>
               <div style={styles.checkLabel}><FiShoppingBag /> Marketplace</div>
-              <input type="checkbox" checked={planos[key].temMarketplace} onChange={() => toggleRecurso(key, 'temMarketplace')} />
+              <input type="checkbox" checked={!!planos[key].temMarketplace} onChange={() => toggleRecurso(key, 'temMarketplace')} />
             </label>
             <label style={styles.checkRow}>
               <div style={styles.checkLabel}><FiTruck /> Melhor Envio</div>
-              <input type="checkbox" checked={planos[key].temLogistica} onChange={() => toggleRecurso(key, 'temLogistica')} />
+              <input type="checkbox" checked={!!planos[key].temLogistica} onChange={() => toggleRecurso(key, 'temLogistica')} />
             </label>
             <label style={styles.checkRow}>
               <div style={styles.checkLabel}><FiZap /> Cupons</div>
-              <input type="checkbox" checked={planos[key].temCupons} onChange={() => toggleRecurso(key, 'temCupons')} />
+              <input type="checkbox" checked={!!planos[key].temCupons} onChange={() => toggleRecurso(key, 'temCupons')} />
+            </label>
+            {/* RECURSO PERSONALIZAÇÃO COM PROTEÇÃO CONTRA ERRO DE INPUT */}
+            <label style={styles.checkRow}>
+              <div style={styles.checkLabel}><FiLayers /> Personalização</div>
+              <input 
+                type="checkbox" 
+                checked={!!planos[key].temPersonalizacao} 
+                onChange={() => toggleRecurso(key, 'temPersonalizacao')} 
+              />
             </label>
             <label style={styles.checkRow}>
               <div style={styles.checkLabel}><FiStar /> Suporte Master</div>
-              <input type="checkbox" checked={planos[key].temSuporte} onChange={() => toggleRecurso(key, 'temSuporte')} />
+              <input type="checkbox" checked={!!planos[key].temSuporte} onChange={() => toggleRecurso(key, 'temSuporte')} />
             </label>
           </div>
 
@@ -201,7 +207,6 @@ export default function TabPlanos({ planos, setPlanos, mostrarAviso }: TabPlanos
 }
 
 const styles: any = {
-  // ... (mesmos estilos anteriores)
   gridPlanos: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px" },
   planCard: { background: "#fff", padding: "25px", borderRadius: "20px", textAlign: "center", boxShadow: "0 10px 25px rgba(0,0,0,0.03)" },
   medalhaPreview: { width: "70px", height: "70px", margin: "0 auto 20px", background: "#f1f5f9", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", overflow: 'hidden', border: '3px solid #fff', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' },

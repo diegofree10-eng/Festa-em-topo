@@ -119,11 +119,10 @@ export default function CadastroProdutos() {
       return;
     }
 
-    // 1. Cabeçalho mais robusto
     const cabecalho = [
       "ID Produto", 
       "Nome", 
-      "Variacao/Grade", // Coluna nova para detalhar a variação
+      "Variacao/Grade", 
       "Categoria", 
       "Preco Venda", 
       "Custo", 
@@ -136,13 +135,12 @@ export default function CadastroProdutos() {
     const linhas: any[] = [];
 
     produtosFiltrados.forEach(p => {
-      // Se o produto TEM variações, criamos uma linha para cada uma
       if (p.temVariacoes && p.variacoes && p.variacoes.length > 0) {
         p.variacoes.forEach((v: any) => {
           linhas.push([
             p.id,
             `"${p.nome?.replace(/"/g, '""')}"`,
-            `"${v.nome?.replace(/"/g, '""')}"`, // Ex: "Azul / G"
+            `"${v.nome?.replace(/"/g, '""')}"`,
             `"${p.categoria || ""}"`,
             v.preco || p.precoBasico,
             v.custo || p.custoUnitario || "0.00",
@@ -153,7 +151,6 @@ export default function CadastroProdutos() {
           ]);
         });
       } else {
-        // Se NÃO tem variações, criamos apenas a linha do produto principal
         linhas.push([
           p.id,
           `"${p.nome?.replace(/"/g, '""')}"`,
@@ -169,7 +166,6 @@ export default function CadastroProdutos() {
       }
     });
 
-    // 2. Montagem e Download (Padrão Excel BR)
     const csvContent = "\ufeff" + [
       cabecalho.join(";"),
       ...linhas.map(l => l.join(";"))
@@ -385,9 +381,11 @@ export default function CadastroProdutos() {
       />
 
       <div style={styles.sidebar}>
-        {/* WIDGET DE LIMITES */}
+        {/* WIDGET DE LIMITES ATUALIZADO */}
         <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '10px', marginBottom: '15px', border: '1px solid #e2e8f0' }}>
           <p style={{ fontSize: '11px', margin: '0 0 8px 0', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Uso do Plano: {planoLojista}</p>
+          
+          {/* Barra de Produtos */}
           <div style={{ marginBottom: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
               <span>📦 Produtos</span>
@@ -395,6 +393,17 @@ export default function CadastroProdutos() {
             </div>
             <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
               <div style={{ width: `${Math.min((produtos.length / limites.produtos) * 100, 100)}%`, height: '100%', background: produtos.length >= limites.produtos ? '#ef4444' : '#10b981', transition: '0.3s' }} />
+            </div>
+          </div>
+
+          {/* Barra de Categorias */}
+          <div style={{ marginBottom: '5px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
+              <span>📁 Categorias</span>
+              <span>{listaCategorias.length} / {limites.categorias}</span>
+            </div>
+            <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min((listaCategorias.length / limites.categorias) * 100, 100)}%`, height: '100%', background: listaCategorias.length >= limites.categorias ? '#ef4444' : '#3b82f6', transition: '0.3s' }} />
             </div>
           </div>
         </div>
