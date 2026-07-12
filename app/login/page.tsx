@@ -2,20 +2,16 @@
 
 import { useState, FormEvent } from "react";
 import { auth, db } from "@/lib/firebase";
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  sendPasswordResetEmail 
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut
 } from "firebase/auth";
-import { doc, setDoc, getDoc, collection, addDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 
-// --- CONFIGURAÇÃO DE SEGURANÇA ---
-const PALAVRAS_PROIBIDAS = [
-  "admin", "master", "suporte", "festaemtopo", "root", "null", 
-  "undefined", "api", "vendas", "financeiro", "ajuda", "config",
-  "sistema", "login", "auth", "teste", "gerente"
-];
+const PALAVRAS_PROIBIDAS = ["admin", "master", "suporte", "root", "config", "sistema", "teste"];
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -25,116 +21,89 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const setAuthCookie = () => {
-    document.cookie = `session=true; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax; Secure`;
-  };
-
-  const garantirVinculoSeguranca = async (user: any, lojaIdForcado: string | null = null) => {
-    const userRef = doc(db, "usuarios", user.uid);
-    const userSnap = await getDoc(userRef);
-
-    if (!userSnap.exists()) {
-      await setDoc(userRef, {
-        lojaId: lojaIdForcado || user.uid,
-        email: user.email,
-        role: email === "diegofree10@gmail.com" ? "master" : "admin",
-        atualizadoEm: Date.now()
-      });
-    }
-  };
-
   const handleAuth = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
       if (isLogin) {
-        // --- LÓGICA DE LOGIN ---
+        // 1. Faz o login
         const userCredential = await signInWithEmailAndPassword(auth, email, senha);
-        const user = userCredential.user;
 
-        const idLojaImagem = "dyMHL51GQMnXRFonLx3Mm1zuYB2";
-        await garantirVinculoSeguranca(user, email === "diegofree10@gmail.com" ? idLojaImagem : null);
+        // 2. Verifica status da loja
+        const lojaRef = doc(db, "lojistas", userCredential.user.uid);
+        const lojaDoc = await getDoc(lojaRef);
 
-        setAuthCookie(); 
-        router.push("/admin");
-      } else {
-        // --- LÓGICA DE CADASTRO ---
-        const nomeParaCheck = nomeLoja.trim().toLowerCase();
-        if (PALAVRAS_PROIBIDAS.some(p => nomeParaCheck.includes(p))) {
-          alert("Nome da loja contém termos reservados.");
-          setLoading(false);
-          return;
+        if (!lojaDoc.exists()) {
+          await signOut(auth);
+          router.push("/suporte-bloqueio");
+          throw new Error("Conta de lojista não encontrada.");
         }
 
-        // 1. Gerar o Slug automaticamente (link da loja)
-        const slugGerado = nomeLoja
-          .toLowerCase()
-          .trim()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "") // Remove acentos
-          .replace(/[^a-z0-9]/g, "-")      // Troca espaços e símbolos por hifen
-          .replace(/-+/g, "-")             // Evita hifens duplos
-          .replace(/^-+|-+$/g, "");        // Remove hifen no início ou fim
+        const dadosLoja = lojaDoc.data().dadosLoja;
+        if (dadosLoja?.dsStatusLoja === "suspenso") {
+          await signOut(auth);
+          router.push("/suporte-bloqueio");
+          return; // Encerra aqui, redirecionou para o suporte
+        }
 
-        // 2. Criar usuário no Firebase Auth
+        // 3. Atualiza ultimoLogin
+        await setDoc(lojaRef, { ultimoLogin: serverTimestamp() }, { merge: true });
+
+        router.push("/admin");
+
+      } else {
+        // 1. Validação de nome
+        const nomeLimpo = nomeLoja.trim();
+        if (PALAVRAS_PROIBIDAS.some(p => nomeLimpo.toLowerCase().includes(p))) {
+          throw new Error("Nome da loja não permitido.");
+        }
+
+        const lojasRef = collection(db, "lojistas");
+        const q = query(lojasRef, where("dadosLoja.dsNomeLoja", "==", nomeLimpo));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          throw new Error("Já existe uma loja com este nome.");
+        }
+
+        // 2. Criar Auth
         const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
         const user = userCredential.user;
+        const slugGerado = nomeLimpo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "-");
 
-        // 3. Buscar Configurações de Plano Master para o Período de Teste
-        const planosRef = doc(db, "configuracoes", "planos");
-        const planosSnap = await getDoc(planosRef);
-        const dadosPlanos = planosSnap.exists() ? planosSnap.data() : {};
-
-        const diasTeste = dadosPlanos["Bronze"]?.diasTeste || 7;
-        
-        // 4. Calcular Data de Vencimento
-        const dataVenc = new Date();
-        dataVenc.setDate(dataVenc.getDate() + diasTeste);
-        const dataVencFormatada = dataVenc.toISOString().split('T')[0];
-
-        // 5. Criar Vínculo de Segurança (usuarios)
+        // 3. Salva usuário
         await setDoc(doc(db, "usuarios", user.uid), {
           lojaId: user.uid,
           email: email,
-          role: "admin"
-        });
+          role: email === "diegofree10@gmail.com" ? "master" : "admin",
+          criadoEm: Date.now()
+        }, { merge: true });
 
-        // 6. Criar Documento da Loja (lojistas) com o SLUG
+        // 4. Salva dados iniciais da loja
         await setDoc(doc(db, "lojistas", user.uid), {
-          nomeLoja: nomeLoja.trim(),
-          slug: slugGerado, // <--- CAMPO ADICIONADO PARA O LINK FUNCIONAR
+          uid: user.uid,
           email: email,
           dataCadastro: Date.now(),
-          dataVencimento: dataVencFormatada,
-          plano: "Bronze",
-          ciclo: "mensal",
-          status: "ativo",
-          isTeste: true,
-          role: "lojista",
-          ultimoLogin: new Date().toISOString(),
-          produtos: [],
-          vendas: []
-        });
+          ultimoLogin: serverTimestamp(),
+          dadosLoja: {
+            dsNomeLoja: nomeLimpo,
+            dsSlug: slugGerado,
+            dsPlanoLoja: "Bronze",
+            dsStatusLoja: "ativo",
+            tsCriacaoLoja: serverTimestamp(),
+            isAtivoLoja: true,
+            ciclo: "mensal"
+          }
+        }, { merge: true });
 
-        // 7. Criar Coleção Inicial de Categorias
-        const catRef = collection(db, "lojistas", user.uid, "categorias");
-        await addDoc(catRef, { nome: "Geral" });
+        // 5. Cria a categoria padrão
+        await addDoc(collection(db, "lojistas", user.uid, "categorias"), { nome: "Geral" });
 
-        setAuthCookie();
-        alert(`🎉 Loja "${nomeLoja}" criada! Link: festaemtopo.com/${slugGerado}`);
         router.push("/admin");
       }
     } catch (error: any) {
-      console.error("Erro completo:", error);
-      if (error.code === 'auth/email-already-in-use') {
-        alert("Este e-mail já está em uso. Tente fazer login.");
-      } else if (error.code === 'auth/weak-password') {
-        alert("A senha deve ter pelo menos 6 caracteres.");
-      } else {
-        alert("Erro na autenticação: " + error.message);
-      }
-    } finally {
+      console.error("Erro:", error);
+      alert(error.message || "Erro ao processar.");
       setLoading(false);
     }
   };
@@ -143,122 +112,97 @@ export default function AuthPage() {
     if (!email) return alert("Digite seu e-mail.");
     try {
       await sendPasswordResetEmail(auth, email);
-      alert("E-mail de recuperação enviado!");
-    } catch (error: any) {
-      alert("Erro: " + error.message);
-    }
+      alert("E-mail enviado!");
+    } catch (error: any) { alert(error.message); }
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.banner}>
-        <div style={styles.logoCircle}>F</div>
-        <h1 style={styles.bannerTitle}>Festa em Topo</h1>
-        <p style={styles.bannerSubtitle}>
-          Crie sua loja de personalizados e gerencie tudo em um só lugar.
-        </p>
+    <div style={styles.container} className="auth-wrapper">
+      <div style={styles.banner} className="auth-banner">
+        <div style={styles.logoBox}>
+          <img
+            src="/logo.png"
+            alt="Logo Store ToYou"
+            style={{ height: '90px', width: 'auto', borderRadius: '8px' }}
+          />
+
+        </div>
+        <h1 style={styles.bannerTitle}>Store ToYou</h1>
+        <p style={styles.bannerSubtitle}>Crie sua loja online e gerencie tudo em um só lugar.</p>
         <div style={styles.bannerDecoration}></div>
       </div>
 
-      <div style={styles.loginArea}>
-        <form onSubmit={handleAuth} style={styles.card}>
+      <div style={styles.loginArea} className="auth-area">
+        <form onSubmit={handleAuth} style={styles.card} className="auth-card">
           <div style={styles.header}>
-            <h2 style={{ margin: 0, fontSize: '24px', color: '#1a1a1a' }}>
-              {isLogin ? "Bem-vindo de volta!" : "Começar teste grátis"}
-            </h2>
-            <p style={{ fontSize: '14px', color: '#64748b', marginTop: '5px' }}>
-              {isLogin ? "Acesse seu painel administrativo" : "Crie sua conta em segundos"}
-            </p>
+            <h2 style={styles.titleText}>{isLogin ? "Bem-vindo!" : "Teste grátis"}</h2>
+            <p style={styles.subtitleText}>{isLogin ? "Acesse seu painel" : "Crie sua conta agora"}</p>
           </div>
 
           {!isLogin && (
             <div style={styles.inputGroup}>
               <label style={styles.label}>Nome da Loja</label>
-              <input 
-                placeholder="Ex: Nome da sua Loja" 
-                value={nomeLoja} 
-                onChange={(e) => setNomeLoja(e.target.value)} 
-                style={styles.input} 
-                required 
-              />
+              <input placeholder="Ex: Minha Loja" value={nomeLoja} onChange={(e) => setNomeLoja(e.target.value)} style={styles.input} required />
             </div>
           )}
 
           <div style={styles.inputGroup}>
             <label style={styles.label}>E-mail</label>
-            <input 
-              type="email" 
-              placeholder="seu@email.com" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              style={styles.input} 
-              required 
-            />
+            <input type="email" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} style={styles.input} required />
           </div>
 
           <div style={styles.inputGroup}>
             <label style={styles.label}>Senha</label>
-            <input 
-              type="password" 
-              placeholder="Sua senha secreta" 
-              value={senha} 
-              onChange={(e) => setSenha(e.target.value)} 
-              style={styles.input} 
-              required 
-            />
+            <input type="password" placeholder="Sua senha" value={senha} onChange={(e) => setSenha(e.target.value)} style={styles.input} required />
           </div>
 
           {isLogin && (
             <div style={{ textAlign: 'right', marginBottom: '20px' }}>
-              <button type="button" onClick={handleRecuperarSenha} style={styles.btnLink}>
-                Esqueceu sua senha?
-              </button>
+              <button type="button" onClick={handleRecuperarSenha} style={styles.btnLink}>Esqueceu a senha?</button>
             </div>
           )}
 
-          <button 
-            type="submit" 
-            disabled={loading} 
-            style={{ 
-              ...styles.btn, 
-              background: loading ? '#cbd5e1' : '#055bb1',
-              cursor: loading ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {loading ? "Processando..." : (isLogin ? "Entrar" : "Criar minha Loja")}
+          <button type="submit" disabled={loading} style={{ ...styles.btn, background: loading ? '#cbd5e1' : '#055bb1' }}>
+            {loading ? "Processando..." : (isLogin ? "Entrar" : "Criar Loja")}
           </button>
 
           <div style={{ textAlign: 'center', marginTop: '25px' }}>
-            <button 
-              type="button" 
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setNomeLoja("");
-              }} 
-              style={{ ...styles.btnLink, textDecoration: 'none', fontWeight: 'bold' }}
-            >
-              {isLogin ? "Não tem conta? Cadastre-se grátis" : "Já tenho conta? Entrar agora"}
+            <button type="button" onClick={() => setIsLogin(!isLogin)} style={styles.btnLinkBold}>
+              {isLogin ? "Cadastre-se grátis" : "Já tenho conta"}
             </button>
           </div>
         </form>
       </div>
+
+      <style jsx>{`
+        @media (max-width: 850px) {
+          .auth-wrapper { flex-direction: column !important; overflow-y: auto !important; }
+          .auth-banner { flex: 0 0 auto !important; width: 100% !important; padding: 40px 20px !important; }
+          .auth-area { padding-top: 20px !important; width: 100% !important; }
+          .auth-card { padding: 30px 20px !important; box-shadow: none !important; width: 100% !important; max-width: 100% !important; }
+          .banner-subtitle { display: none; }
+        }
+      `}</style>
     </div>
   );
 }
 
 const styles: any = {
-  container: { display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', background: '#f0f2f5' },
+  container: { display: 'flex', height: '100vh', width: '100vw', background: '#f0f2f5', overflow: 'hidden' },
   banner: { flex: '0 0 40%', background: '#055bb1', color: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '40px', textAlign: 'center', position: 'relative', overflow: 'hidden' },
   logoCircle: { width: '60px', height: '60px', background: '#fdb813', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#055bb1', fontWeight: 'bold', fontSize: '28px', marginBottom: '20px', zIndex: 2 },
   bannerTitle: { margin: 0, fontSize: '28px', fontWeight: 'bold', zIndex: 2 },
   bannerSubtitle: { fontSize: '16px', color: '#e2e8f0', marginTop: '10px', maxWidth: '300px', zIndex: 2 },
   bannerDecoration: { position: 'absolute', bottom: '-100px', left: '-100px', width: '400px', height: '400px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%', zIndex: 1 },
   loginArea: { flex: '1', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' },
-  card: { background: '#fff', padding: '45px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)', width: '100%', maxWidth: '420px' },
+  card: { background: '#fff', padding: '45px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)', width: '100%', maxWidth: '420px', boxSizing: 'border-box' },
   header: { textAlign: 'center', marginBottom: '35px' },
+  titleText: { margin: 0, fontSize: '24px', color: '#1a1a1a' },
+  subtitleText: { fontSize: '14px', color: '#64748b', marginTop: '5px' },
   inputGroup: { marginBottom: '20px' },
   label: { display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '8px', color: '#333' },
   input: { width: '100%', padding: '14px', borderRadius: '10px', border: '1px solid #e1e1e1', boxSizing: 'border-box', fontSize: '16px', outlineColor: '#055bb1', color: '#000' },
-  btn: { width: '100%', padding: '16px', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '16px', transition: '0.2s', marginTop: '10px' },
-  btnLink: { background: 'none', border: 'none', color: '#055bb1', fontSize: '13px', cursor: 'pointer', textDecoration: 'underline', padding: 0 }
+  btn: { width: '100%', padding: '16px', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' },
+  btnLink: { background: 'none', border: 'none', color: '#055bb1', fontSize: '13px', cursor: 'pointer' },
+  btnLinkBold: { background: 'none', border: 'none', color: '#055bb1', fontSize: '14px', cursor: 'pointer', fontWeight: 'bold' }
 };

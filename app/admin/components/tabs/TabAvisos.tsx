@@ -1,8 +1,8 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { doc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
-import { FiMessageSquare, FiSearch, FiSend, FiCheck, FiEye, FiClock, FiArrowLeft, FiBell } from "react-icons/fi";
+import { doc, updateDoc, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { FiMessageSquare, FiSearch, FiSend, FiCheck, FiEye, FiClock, FiArrowLeft } from "react-icons/fi";
 
 interface TabAvisosProps {
   lojistas: any[];
@@ -14,130 +14,134 @@ export default function TabAvisos({ lojistas, mostrarAviso }: TabAvisosProps) {
   const [targetLojista, setTargetLojista] = useState("todos");
   const [buscaLojistaMsg, setBuscaLojistaMsg] = useState("");
   const [filtroPlanoMsg, setFiltroPlanoMsg] = useState("Todos");
-  
-  // Estados de Visualização
+
   const [msgVisualizar, setMsgVisualizar] = useState<any>(null);
   const [msgDetalhe, setMsgDetalhe] = useState<any>(null);
+  const [unsub, setUnsub] = useState<any>(null);
 
+  // Limpeza de listener ao desmontar
+  useEffect(() => () => { if (unsub) unsub(); }, [unsub]);
+
+  // Substitua o seu filter atual por este:
   const lojistasFiltrados = lojistas.filter(l => {
-    const bateBusca = l.nomeLoja?.toLowerCase().includes(buscaLojistaMsg.toLowerCase());
-    const batePlano = filtroPlanoMsg === "Todos" || l.plano === filtroPlanoMsg;
+    const nomeLoja = l.dadosLoja?.dsNomeLoja?.toLowerCase() || "";
+    const planoLoja = l.dadosLoja?.dsPlanoLoja || "Sem Plano"; // Ajustado para o campo da imagem
+
+    const bateBusca = nomeLoja.includes(buscaLojistaMsg.toLowerCase());
+    const batePlano = filtroPlanoMsg === "Todos" || planoLoja === filtroPlanoMsg;
+
     return bateBusca && batePlano;
   });
 
   async function enviarMensagem() {
     if (!msgTexto) return;
+
     const comunicado = {
-      id: Date.now().toString(),
+      titulo: "Comunicado do Master",
       texto: msgTexto,
-      data: Date.now(),
+      dataEnvio: serverTimestamp(),
       lida: false,
-      tipo: targetLojista === "todos" ? "GERAL" : "DIRETA"
+      prioridade: "alta",
+      categoria: "sistema",
+      data: Date.now() // Adicionado para o campo que o useEffect do Lojista espera
     };
 
     try {
       if (targetLojista === "todos") {
-        await setDoc(doc(db, "configuracoes", "comunicado_geral"), comunicado);
-      } else {
-        await updateDoc(doc(db, "lojistas", targetLojista), {
-          mensagemMaster: comunicado,
-          historicoMensagens: arrayUnion(comunicado)
+        // Cria uma promessa para cada envio
+        const promessas = lojistas.map(l => {
+          // 1. Salva no histórico (subcoleção)
+          const msgRef = addDoc(collection(db, "lojistas", l.id, "mensagens"), comunicado);
+          // 2. Atualiza a raiz para disparar o Modal do lojista
+          const raizRef = updateDoc(doc(db, "lojistas", l.id), {
+            mensagemMaster: comunicado
+          });
+          return Promise.all([msgRef, raizRef]);
         });
+        await Promise.all(promessas);
+        mostrarAviso("Comunicado enviado para todos!");
+      } else {
+        // ... (seu código atual para lojista individual já está correto)
+        await addDoc(collection(db, "lojistas", targetLojista, "mensagens"), comunicado);
+        await updateDoc(doc(db, "lojistas", targetLojista), {
+          mensagemMaster: comunicado
+        });
+        mostrarAviso("Comunicado enviado!");
       }
       setMsgTexto("");
       setTargetLojista("todos");
-      mostrarAviso("Comunicado enviado!");
     } catch (e) {
+      console.error(e);
       mostrarAviso("Erro ao enviar.", "erro");
     }
   }
+  
+  const abrirHistorico = (l: any) => {
+    if (unsub) unsub();
+    const q = query(collection(db, "lojistas", l.id, "mensagens"), orderBy("dataEnvio", "desc"));
+    const listener = onSnapshot(q, (snap) => {
+      setMsgVisualizar({ loja: l.nomeLoja, historico: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+    });
+    setUnsub(() => listener);
+  };
 
   return (
     <div style={styles.tabWrapper}>
       {/* MODAL 1: HISTÓRICO */}
       {msgVisualizar && (
-        <div style={styles.overlayMaster} onClick={() => setMsgVisualizar(null)}>
+        <div style={styles.overlayMaster} onClick={() => { if (unsub) unsub(); setMsgVisualizar(null); }}>
           <div style={styles.modalVisualizar} onClick={e => e.stopPropagation()}>
-            <div style={styles.modalVisHeader}>
-              <FiMessageSquare /> HISTÓRICO: {msgVisualizar.loja}
-            </div>
+            <div style={styles.modalVisHeader}><FiMessageSquare /> HISTÓRICO: {msgVisualizar.loja}</div>
             <div style={styles.historicoScroll}>
-              {(!msgVisualizar.historico || msgVisualizar.historico.length === 0) ? (
-                <p style={styles.noMsg}>Nenhuma mensagem no histórico.</p>
-              ) : (
-                msgVisualizar.historico.slice().reverse().map((m: any) => (
+              {msgVisualizar.historico?.length === 0 ? <p style={styles.noMsg}>Nenhuma mensagem.</p> :
+                msgVisualizar.historico.map((m: any) => (
                   <div key={m.id} style={styles.cardHistorico} onClick={() => setMsgDetalhe(m)}>
                     <div style={styles.modalVisSub}>
-                      <span style={{ color: m.lida ? '#10b981' : '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {m.lida ? <><FiCheck /> LIDA</> : <><FiClock /> PENDENTE</>}
-                      </span>
-                      <span>{new Date(m.data).toLocaleString()}</span>
+                      <span style={{ color: m.lida ? '#10b981' : '#f59e0b' }}>{m.lida ? 'LIDA' : 'PENDENTE'}</span>
+                      <span>{m.dataEnvio?.toDate().toLocaleString()}</span>
                     </div>
-                    <p style={styles.msgPreviewMaster}>{m.texto.substring(0, 90)}...</p>
-                    <div style={styles.clickToOpen}>Ver conteúdo completo</div>
+                    <p style={styles.msgPreviewMaster}>{m.texto.substring(0, 70)}...</p>
                   </div>
                 ))
-              )}
+              }
             </div>
-            <button style={styles.modalVisBtn} onClick={() => setMsgVisualizar(null)}>FECHAR</button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: DETALHE */}
-      {msgDetalhe && (
-        <div style={{ ...styles.overlayMaster, zIndex: 11000 }} onClick={() => setMsgDetalhe(null)}>
-          <div style={{ ...styles.modalVisualizar, maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
-            <div style={styles.modalVisHeader}><FiEye /> DETALHE DO AVISO</div>
-            <div style={styles.modalVisSub}>
-              <span>ENVIADA EM:</span>
-              <span>{new Date(msgDetalhe.data).toLocaleString()}</span>
-            </div>
-            <p style={styles.modalVisText}>{msgDetalhe.texto}</p>
-            <button style={{ ...styles.modalVisBtn, background: '#3b82f6' }} onClick={() => setMsgDetalhe(null)}>
-              <FiArrowLeft /> VOLTAR
-            </button>
+            <button style={styles.modalVisBtn} onClick={() => { if (unsub) unsub(); setMsgVisualizar(null); }}>FECHAR</button>
           </div>
         </div>
       )}
 
       {/* CONTEÚDO DA ABA */}
       <div style={styles.mainCard}>
-        <div style={styles.headerRow}>
-          <h3 style={{ fontSize: '18px' }}>📢 Central de Comunicados</h3>
-          <div style={{ display: 'flex', gap: '5px' }}>
-            {['Todos', 'Bronze', 'Prata', 'Ouro'].map(p => (
-              <button key={p} onClick={() => setFiltroPlanoMsg(p)} style={filtroPlanoMsg === p ? styles.miniTabActive : styles.miniTab}>{p}</button>
-            ))}
-          </div>
-        </div>
-
+        <h3 style={{ fontSize: '18px', marginBottom: '20px' }}>📢 Central de Comunicados</h3>
         <div style={styles.flexLayout}>
           <div style={{ flex: '1 1 300px' }}>
             <label style={styles.label}>1. SELECIONE O DESTINATÁRIO</label>
-            <div style={styles.searchBox}>
-              <FiSearch />
-              <input placeholder="Buscar lojista..." style={styles.inputSearch} value={buscaLojistaMsg} onChange={(e) => setBuscaLojistaMsg(e.target.value)} />
-            </div>
+            <div style={styles.searchBox}><FiSearch /> <input placeholder="Buscar..." style={styles.inputSearch} value={buscaLojistaMsg} onChange={(e) => setBuscaLojistaMsg(e.target.value)} /></div>
             <div style={styles.userListScroll}>
               <button onClick={() => setTargetLojista("todos")} style={targetLojista === "todos" ? styles.userItemActive : styles.userItem}>🌍 Todos os Lojistas</button>
               {lojistasFiltrados.map(l => (
                 <button key={l.id} onClick={() => setTargetLojista(l.id)} style={targetLojista === l.id ? styles.userItemActive : styles.userItem}>
                   <div style={styles.userItemContent}>
-                    <span>🏪 {l.nomeLoja || "S/N"}</span>
-                    <span onClick={(e) => { e.stopPropagation(); setMsgVisualizar({ loja: l.nomeLoja, historico: l.historicoMensagens || [] }); }} style={styles.eyeIcon}>
-                      <small>{l.historicoMensagens?.length || 0}</small>
-                      {l.mensagemMaster?.lida ? <FiCheck color="#10b981" /> : <FiEye color="#94a3b8" />}
+
+                    {/* ALTERAÇÃO AQUI: Acessando dadosLoja.dsNomeLoja conforme sua imagem */}
+                    <span>🏪 {l.dadosLoja?.dsNomeLoja || "Loja Sem Nome"}</span>
+
+                    <span onClick={(e) => {
+                      e.stopPropagation();
+                      abrirHistorico(l);
+                    }}
+                      style={styles.eyeIcon}
+                    >
+                      <FiEye />
                     </span>
                   </div>
                 </button>
               ))}
             </div>
           </div>
-
           <div style={{ flex: '2 1 400px' }}>
             <label style={styles.label}>2. MENSAGEM</label>
-            <textarea style={styles.textarea} value={msgTexto} onChange={(e) => setMsgTexto(e.target.value)} placeholder="O lojista verá isso em um popup..." />
+            <textarea style={styles.textarea} value={msgTexto} onChange={(e) => setMsgTexto(e.target.value)} placeholder="Escreva o aviso para o lojista..." />
             <button onClick={enviarMensagem} style={styles.btnSend}><FiSend /> Enviar Comunicado</button>
           </div>
         </div>
@@ -145,6 +149,7 @@ export default function TabAvisos({ lojistas, mostrarAviso }: TabAvisosProps) {
     </div>
   );
 }
+
 
 const styles: any = {
   tabWrapper: { background: '#fff', padding: '25px', borderRadius: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' },

@@ -5,16 +5,17 @@ import {
   collection, doc, onSnapshot, getDoc, query, orderBy 
 } from "firebase/firestore";
 
-// --- IMPORTAÇÃO DAS TABS (CAMINHO CORRIGIDO PARA A SUA ESTRUTURA) ---
+// --- IMPORTAÇÃO DAS TABS ---
 import TabPanorama from "./tabs/TabPanorama";
 import TabPlanos from "./tabs/TabPlanos";
 import TabAssinaturas from "./tabs/TabAssinaturas";
 import TabAvisos from "./tabs/TabAvisos";
 import TabDenuncias from "./tabs/TabDenuncias";
+import TabFinanceiro from "./tabs/TabFinanceiro";
 
 import { 
   FiAward, FiUsers, FiTrendingUp, FiSettings,
-  FiMessageSquare, FiAlertTriangle
+  FiMessageSquare, FiAlertTriangle, FiDollarSign
 } from "react-icons/fi";
 
 export default function PainelMasterFesta() {
@@ -25,43 +26,63 @@ export default function PainelMasterFesta() {
   const [denuncias, setDenuncias] = useState([]);
   const [notificacao, setNotificacao] = useState({ exibir: false, texto: "", tipo: "sucesso" });
 
+  // 📦 OBJETO DE INICIALIZAÇÃO LIMPO: Não trava nenhuma flag nova no código rígido.
+  // O onSnapshot se encarrega de preencher as propriedades customizadas vindo direto do Firestore.
   const [planos, setPlanos] = useState({
-    Bronze: { nome: "Bronze", produtos: 20, categorias: 3, cor: "#c2410c", medalhaUrl: "", temGateway: false, temLogistica: false, temCupons: false, temSuporte: false, temMarketplace: false, modeloDash: "basico" },
-    Prata: { nome: "Prata", produtos: 100, categorias: 10, cor: "#475569", medalhaUrl: "", temGateway: true, temLogistica: true, temCupons: true, temSuporte: false, temMarketplace: true, modeloDash: "completo" },
-    Ouro: { nome: "Ouro", produtos: 9999, categorias: 9999, cor: "#a16207", medalhaUrl: "", temGateway: true, temLogistica: true, temCupons: true, temSuporte: true, temMarketplace: true, modeloDash: "completo" }
+    Bronze: { nome: "Bronze", produtos: 20, categorias: 3, cor: "#c2410c", medalhaUrl: "", modeloDash: "basico" },
+    Prata: { nome: "Prata", produtos: 100, categorias: 10, cor: "#475569", medalhaUrl: "", modeloDash: "completo" },
+    Ouro: { nome: "Ouro", produtos: 9999, categorias: 9999, cor: "#a16207", medalhaUrl: "", modeloDash: "completo" }
   });
 
-  // 1. VERIFICAÇÃO DE AUTORIZAÇÃO
+  // 1. VERIFICAÇÃO DE AUTORIZAÇÃO (Filtra quem tem o role "master")
   useEffect(() => {
     const checkAuth = auth.onAuthStateChanged(async (user) => {
       if (user) {
-        const userDoc = await getDoc(doc(db, "usuarios", user.uid));
-        if (userDoc.exists() && userDoc.data().role === "master") {
-          setIsAuthorized(true);
-        } else { window.location.href = "/login"; }
-      } else { window.location.href = "/login"; }
+        try {
+          const userDoc = await getDoc(doc(db, "usuarios", user.uid));
+          if (userDoc.exists() && userDoc.data().role === "master") {
+            setIsAuthorized(true);
+          } else { 
+            window.location.href = "/login"; 
+          }
+        } catch (error) {
+          console.error("Erro na verificação de privilégios:", error);
+          window.location.href = "/login";
+        }
+      } else { 
+        window.location.href = "/login"; 
+      }
     });
     return () => checkAuth();
   }, []);
 
   // 2. LEITURA EM TEMPO REAL (FIREBASE)
   useEffect(() => {
-    if (!isAuthorized) return;
+    if (!isAuthorized || !auth.currentUser) return;
 
+    // Alimenta dinamicamente as flags e abas configuradas na nuvem
     const unsubPlanos = onSnapshot(doc(db, "configuracoes", "planos"), (snap) => {
-      if (snap.exists()) setPlanos(snap.data());
+      if (snap.exists()) setPlanos(snap.data() as any);
     });
 
     const unsubLojistas = onSnapshot(collection(db, "lojistas"), (snap) => {
-      setLojistas(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLojistas(snap.docs.map(d => ({ id: d.id, ...d.data() })) as any);
       setLoading(false);
+    }, (error) => {
+      console.warn("Aguardando estabilização dos privilégios Master para carregar lojistas...", error.message);
     });
 
     const unsubDenuncias = onSnapshot(query(collection(db, "denuncias"), orderBy("data", "desc")), (snap) => {
-      setDenuncias(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setDenuncias(snap.docs.map(d => ({ id: d.id, ...d.data() })) as any);
+    }, (error) => {
+      console.warn("Aguardando validação de regras de segurança para aba denúncias...", error.message);
     });
 
-    return () => { unsubPlanos(); unsubLojistas(); unsubDenuncias(); };
+    return () => { 
+      unsubPlanos(); 
+      unsubLojistas(); 
+      unsubDenuncias(); 
+    };
   }, [isAuthorized]);
 
   const mostrarAviso = (texto: string, tipo = "sucesso") => {
@@ -94,6 +115,7 @@ export default function PainelMasterFesta() {
       <nav style={styles.tabContainer}>
         {[
           {id: "PANORAMA", icon: <FiTrendingUp />, label: "PANORAMA"},
+          {id: "FINANCEIRO", icon: <FiDollarSign />, label: "FINANCEIRO"},
           {id: "PLANOS", icon: <FiSettings />, label: "CONFIG PLANOS"},
           {id: "ASSINATURAS", icon: <FiAward />, label: "ASSINATURAS"},
           {id: "AVISOS", icon: <FiMessageSquare />, label: "AVISOS"},
@@ -113,6 +135,10 @@ export default function PainelMasterFesta() {
       <main style={styles.mainContent}>
         {activeTab === "PANORAMA" && (
           <TabPanorama lojistas={lojistas} denuncias={denuncias} planos={planos} />
+        )}
+
+        {activeTab === "FINANCEIRO" && (
+          <TabFinanceiro lojistas={lojistas} />
         )}
 
         {activeTab === "PLANOS" && (

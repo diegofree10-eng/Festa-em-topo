@@ -8,16 +8,19 @@ import {
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, uploadString } from "firebase/storage";
 import { onAuthStateChanged } from "firebase/auth";
-import { FiDownload } from "react-icons/fi"; // Importando ícone de download
+import { FiDownload, FiSettings } from "react-icons/fi"; 
 
 // --- IMPORTAÇÃO DOS ESTADOS E MODAIS ---
 import { styles } from "./styles"; 
 import RequisitosModal from "@/app/admin/components/RequisitosModal";
 import VariacoesModal from "@/app/admin/components/VariacoesModal";
+import CategoriaSubCat from "@/app/admin/components/CategoriaSubCat"; 
+import ModalGeradorSKU from "@/app/admin/components/ModalGeradorSKU"; 
+import EtiquetaModal from "@/app/admin/components/EtiquetaModal";
 
 // --- CONFIGURAÇÃO DE SEGURANÇA E PLANOS ---
 const LIMITES_PLANOS = {
-  Bronze: { produtos: 60, categorias: 6 },
+  Bronze: { produtos: 60, categories: 6 },
   Prata: { produtos: 80, categorias: 8 },
   Ouro: { produtos: 110, categorias: 10 },
 };
@@ -36,12 +39,19 @@ export default function CadastroProdutos() {
   const [limites, setLimites] = useState({ produtos: 0, categorias: 0 });
   
   const [nome, setNome] = useState("");
+  const [sku, setSku] = useState(""); 
+  const [isModalSKUOpen, setIsModalSKUOpen] = useState(false); 
+  const [listaParaImprimir, setListaParaImprimir] = useState<any[]>([]); // ESTADO NOVO
   const [descricao, setDescricao] = useState("");
   const [categoria, setCategoria] = useState("");
+  const [subcategoria, setSubcategoria] = useState(""); 
   const [precoBasico, setPrecoBasico] = useState("");
   const [custoUnitario, setCustoUnitario] = useState(""); 
   const [ativo, setAtivo] = useState(true);
-  const [precisaFrete, setPrecisaFrete] = useState(true);
+  
+  const [envioTransportadora, setEnvioTransportadora] = useState(true);
+  const [permiteRetirada, setPermiteRetirada] = useState(false);
+  
   const [peso, setPeso] = useState("");
   const [comprimento, setComprimento] = useState("");
   const [largura, setLargura] = useState("");
@@ -53,7 +63,7 @@ export default function CadastroProdutos() {
   const [produtos, setProdutos] = useState<any[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [listaCategorias, setListaCategorias] = useState<any[]>([]);
-  const [showCatManager, setShowCatManager] = useState(false);
+  const [showCatManager, setShowCatManager] = useState(false); 
   const [showDescModal, setShowDescModal] = useState(false);
   const [showReqModal, setShowReqModal] = useState(false);
   const [requisitos, setRequisitos] = useState({ 
@@ -65,8 +75,9 @@ export default function CadastroProdutos() {
   const [modoMassa, setModoMassa] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [showVarModal, setShowVarModal] = useState(false);
-  const [nomeVar1, setNomeVar1] = useState("Cor");
-  const [opcoesVar1, setOpcoesVar1] = useState(["Azul", "Rosa"]);
+  
+  const [nomeVar1, setNomeVar1] = useState("");
+  const [opcoesVar1, setOpcoesVar1] = useState<string[]>([]);
   const [nomeVar2, setNomeVar2] = useState("");
   const [opcoesVar2, setOpcoesVar2] = useState<string[]>([]);
   const [tabelaPrecos, setTabelaPrecos] = useState<any>({});
@@ -107,79 +118,36 @@ export default function CadastroProdutos() {
     });
   }, [planosMaster, planoLojista]);
 
-  // --- FUNÇÕES DE EXPORTAÇÃO CSV ---
   const exportarProdutosCSV = () => {
     if (planoLojista === "Bronze") {
       alert("A exportação de relatórios está disponível apenas nos planos Prata e Ouro.");
       return;
     }
-
     if (produtosFiltrados.length === 0) {
       alert("Não há produtos para exportar.");
       return;
     }
-
-    const cabecalho = [
-      "ID Produto", 
-      "Nome", 
-      "Variacao/Grade", 
-      "Categoria", 
-      "Preco Venda", 
-      "Custo", 
-      "Status", 
-      "Peso(kg)", 
-      "Medidas", 
-      "Personalizavel"
-    ];
-
+    const cabecalho = ["SKU", "ID Produto", "Nome", "Variacao/Grade", "Categoria", "Preco Venda", "Custo", "Status", "Peso(kg)", "Medidas", "Personalizavel"];
     const linhas: any[] = [];
-
     produtosFiltrados.forEach(p => {
+      const sku = p.sku || "SEM-SKU";
       if (p.temVariacoes && p.variacoes && p.variacoes.length > 0) {
         p.variacoes.forEach((v: any) => {
-          linhas.push([
-            p.id,
-            `"${p.nome?.replace(/"/g, '""')}"`,
-            `"${v.nome?.replace(/"/g, '""')}"`,
-            `"${p.categoria || ""}"`,
-            v.preco || p.precoBasico,
-            v.custo || p.custoUnitario || "0.00",
-            p.ativo ? "Visivel" : "Oculto",
-            p.peso || "0",
-            `${p.comprimento || 0}x${p.largura || 0}x${p.altura || 0}`,
-            p.requisitos ? "Sim" : "Nao"
-          ]);
+          linhas.push([sku, p.id, `"${p.nome?.replace(/"/g, '""')}"`, `"${v.nome?.replace(/"/g, '""')}"`, `"${p.categoria || ""}"`, v.preco || p.precoBasico, v.custo || p.custoUnitario || "0.00", p.ativo ? "Visivel" : "Oculto", p.peso || "0", `${p.comprimento || 0}x${p.largura || 0}x${p.altura || 0}`, p.requisitos ? "Sim" : "Nao"]);
         });
       } else {
-        linhas.push([
-          p.id,
-          `"${p.nome?.replace(/"/g, '""')}"`,
-          "Unico",
-          `"${p.categoria || ""}"`,
-          p.precoBasico,
-          p.custoUnitario || "0.00",
-          p.ativo ? "Visivel" : "Oculto",
-          p.peso || "0",
-          `${p.comprimento || 0}x${p.largura || 0}x${p.altura || 0}`,
-          p.requisitos ? "Sim" : "Nao"
-        ]);
+        linhas.push([sku, p.id, `"${p.nome?.replace(/"/g, '""')}"`, "Unico", `"${p.categoria || ""}"`, p.precoBasico, p.custoUnitario || "0.00", p.ativo ? "Visivel" : "Oculto", p.peso || "0", `${p.comprimento || 0}x${p.largura || 0}x${p.altura || 0}`, p.requisitos ? "Sim" : "Nao"]);
       }
     });
-
-    const csvContent = "\ufeff" + [
-      cabecalho.join(";"),
-      ...linhas.map(l => l.join(";"))
-    ].join("\n");
-
+    const csvContent = "\ufeff" + [cabecalho.join(";"), ...linhas.map(l => l.join(";"))].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `relatorio_completo_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`;
+    link.download = `relatorio_produtos_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`;
     link.click();
   };
 
-  // --- FUNÇÕES DE AUXÍLIO ---
   const comprimirImagem = (file: File): Promise<Blob> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -223,16 +191,6 @@ export default function CadastroProdutos() {
     setter((parseInt(cleanValue) / 100).toFixed(2));
   };
 
-  const handleInputTabela = (key: string, campo: string, valor: string) => {
-    if (campo === "foto") {
-      setTabelaPrecos((prev: any) => ({ ...prev, [key]: { ...prev[key], [campo]: valor } }));
-      return;
-    }
-    const cleanValue = valor.replace(/\D/g, "");
-    const formatted = cleanValue ? (parseInt(cleanValue) / 100).toFixed(2) : "";
-    setTabelaPrecos((prev: any) => ({ ...prev, [key]: { ...prev[key], [campo]: formatted } }));
-  };
-
   const gerarCombinacoes = () => {
     if (opcoesVar1.length === 0) return [];
     if (opcoesVar2.length === 0) return opcoesVar1.filter(v => v.trim()).map(v1 => ({ v1, v2: "", key: v1 }));
@@ -241,6 +199,26 @@ export default function CadastroProdutos() {
       opcoesVar2.filter(v => v.trim()).forEach(v2 => { combos.push({ v1, v2, key: `${v1}-${v2}` }); });
     });
     return combos;
+  };
+
+  const sugerirSkus = (tabelaAtual: any, setTabela: any) => {
+    if (!sku) {
+      alert("Por favor, preencha o SKU Base do produto antes de gerar as variações.");
+      return;
+    }
+    const combos = gerarCombinacoes();
+    const novaTabela = { ...tabelaAtual }; 
+    combos.forEach(c => {
+      if (!novaTabela[c.key]?.sku) {
+        const sufixo1 = c.v1 ? c.v1.substring(0, 3).toUpperCase() : "";
+        const sufixo2 = c.v2 ? `-${c.v2.substring(0, 3).toUpperCase()}` : "";
+        novaTabela[c.key] = {
+          ...novaTabela[c.key],
+          sku: `${sku}-${sufixo1}${sufixo2}`.toUpperCase()
+        };
+      }
+    });
+    setTabela({ ...novaTabela }); 
   };
 
   async function uploadImagens() {
@@ -303,30 +281,33 @@ export default function CadastroProdutos() {
           novaTabelaPrecos[key].foto = await getDownloadURL(snapshot.ref);
         }
       }
-
       const combos = gerarCombinacoes();
       const precosValidos = Object.values(novaTabelaPrecos).map((v: any) => parseFloat(v.preco)).filter(p => p > 0);
       const precoFinal = precosValidos.length > 0 ? Math.min(...precosValidos).toFixed(2) : precoBasico;
-
       const dados: any = {
-        lojistaId: uid, nome, descricao, categoria, precoBasico: precoFinal, custoUnitario, ativo, precisaFrete,
-        peso, comprimento, largura, altura, imagens, capa: imagens[0] || "",
+        lojistaId: uid, nome, sku, descricao, categoria, subcategoria,
+        precoBasico: precoFinal, custoUnitario, ativo,
+        envioTransportadora, permiteRetirada, precisaFrete: envioTransportadora,
+        peso: envioTransportadora ? peso : null,
+        comprimento: envioTransportadora ? comprimento : null,
+        largura: envioTransportadora ? largura : null,
+        altura: envioTransportadora ? altura : null,
+        imagens, capa: imagens[0] || "",
         temVariacoes: temVariaveisComPreco,
         nomeVar1, nomeVar2, requisitos,
         variacoes: temVariaveisComPreco ? combos.map(c => ({
           nome: c.v2 ? `${c.v1} / ${c.v2}` : c.v1,
           v1: c.v1, v2: c.v2,
+          sku: novaTabelaPrecos[c.key]?.sku || "",
           preco: novaTabelaPrecos[c.key]?.preco || precoBasico,
           custo: novaTabelaPrecos[c.key]?.custo || custoUnitario,
           foto: novaTabelaPrecos[c.key]?.foto || ""
         })) : [],
         updatedAt: Date.now()
       };
-
       const docRef = doc(db, "lojistas", uid, "produtos", produtoId);
       if (editId) await updateDoc(docRef, dados);
       else await setDoc(docRef, { ...dados, destaque: false, createdAt: Date.now() });
-      
       alert("Sucesso!");
       limparForm();
     } catch (e) { alert("Erro ao salvar."); }
@@ -334,10 +315,16 @@ export default function CadastroProdutos() {
   }
 
   const limparForm = () => {
-    setNome(""); setDescricao(""); setCategoria(""); setPrecoBasico(""); setCustoUnitario("");
-    setPeso(""); setComprimento(""); setLargura(""); setAltura(""); setImagens([]); setEditId(null); setFiles([]); setPrecisaFrete(true);
-    setOpcoesVar1(["Azul", "Rosa"]); setOpcoesVar2([]); setNomeVar1("Cor"); setNomeVar2(""); setTabelaPrecos({});
+    setNome(""); setSku(""); setDescricao(""); setCategoria(""); setSubcategoria(""); setPrecoBasico(""); setCustoUnitario("");
+    setPeso(""); setComprimento(""); setLargura(""); setAltura(""); setImagens([]); setEditId(null); setFiles([]); setEnvioTransportadora(true); setPermiteRetirada(false);
+    setOpcoesVar1([]); setOpcoesVar2([]); setNomeVar1(""); setNomeVar2(""); setTabelaPrecos({});
     setRequisitos({ pedeNome: false, pedeIdade: false, pedeData: false, pedeObs: false });
+  };
+
+  const handleConfirmarGrade = (novaTabela: any) => { setTabelaPrecos(novaTabela); };
+
+  const resetarCamposVariacoes = () => {
+    setNomeVar1(""); setOpcoesVar1([]); setNomeVar2(""); setOpcoesVar2([]); setTabelaPrecos({}); setShowVarModal(false);
   };
 
   const produtosFiltrados = produtos.filter(p => {
@@ -362,6 +349,7 @@ export default function CadastroProdutos() {
 
       {showReqModal && (
         <RequisitosModal 
+          lojistaId={uid || ""} 
           config={requisitos} 
           onSave={(novos: any) => { setRequisitos(novos); setShowReqModal(false); }} 
           onClose={() => setShowReqModal(false)}
@@ -369,76 +357,89 @@ export default function CadastroProdutos() {
       )}
       
       <VariacoesModal 
+        key={showVarModal ? "aberto" : "fechado"}
         showVarModal={showVarModal}
         setShowVarModal={setShowVarModal}
         nomeVar1={nomeVar1} setNomeVar1={setNomeVar1}
         opcoesVar1={opcoesVar1} setOpcoesVar1={setOpcoesVar1}
         nomeVar2={nomeVar2} setNomeVar2={setNomeVar2}
         opcoesVar2={opcoesVar2} setOpcoesVar2={setOpcoesVar2}
+        onCancel={resetarCamposVariacoes}
         tabelaPrecos={tabelaPrecos}
-        handleInputTabela={handleInputTabela}
+        onSave={handleConfirmarGrade}
         gerarCombinacoes={gerarCombinacoes}
+        sugerirSkus={sugerirSkus}
       />
 
-      <div style={styles.sidebar}>
-        {/* WIDGET DE LIMITES ATUALIZADO */}
-        <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '10px', marginBottom: '15px', border: '1px solid #e2e8f0' }}>
-          <p style={{ fontSize: '11px', margin: '0 0 8px 0', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Uso do Plano: {planoLojista}</p>
-          
-          {/* Barra de Produtos */}
-          <div style={{ marginBottom: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
-              <span>📦 Produtos</span>
-              <span>{produtos.length} / {limites.produtos}</span>
-            </div>
-            <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-              <div style={{ width: `${Math.min((produtos.length / limites.produtos) * 100, 100)}%`, height: '100%', background: produtos.length >= limites.produtos ? '#ef4444' : '#10b981', transition: '0.3s' }} />
-            </div>
-          </div>
+      <EtiquetaModal 
+        isOpen={listaParaImprimir.length > 0}
+        listaProdutos={listaParaImprimir}
+        onClose={() => setListaParaImprimir([])}
+      />
 
-          {/* Barra de Categorias */}
-          <div style={{ marginBottom: '5px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
-              <span>📁 Categorias</span>
-              <span>{listaCategorias.length} / {limites.categorias}</span>
-            </div>
-            <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-              <div style={{ width: `${Math.min((listaCategorias.length / limites.categorias) * 100, 100)}%`, height: '100%', background: listaCategorias.length >= limites.categorias ? '#ef4444' : '#3b82f6', transition: '0.3s' }} />
-            </div>
-          </div>
+      {showCatManager && (
+        <CategoriaSubCat 
+          lojistaId={uid || ""} 
+          onClose={() => setShowCatManager(false)} 
+          limite={limites.categorias}
+        />
+      )}
+
+      {isModalSKUOpen && (
+        <ModalGeradorSKU
+          lojistaId={uid || ""}
+          onClose={() => setIsModalSKUOpen(false)} 
+          onSave={(codigo) => { setSku(codigo); setIsModalSKUOpen(false); }} 
+        />
+      )}
+
+      <div style={styles.sidebar}>
+        <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '10px', marginBottom: '15px', border: '1px solid #e2e8f0' }}>
+           <p style={{ fontSize: '11px', margin: '0 0 8px 0', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Uso do Plano: {planoLojista}</p>
+           <div style={{ marginBottom: '10px' }}>
+             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
+               <span>📦 Produtos</span>
+               <span>{produtos.length} / {limites.produtos}</span>
+             </div>
+             <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+               <div style={{ width: `${Math.min((produtos.length / limites.produtos) * 100, 100)}%`, height: '100%', background: produtos.length >= limites.produtos ? '#ef4444' : '#10b981', transition: '0.3s' }} />
+             </div>
+           </div>
+           <div style={{ marginBottom: '5px' }}>
+             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
+               <span>📁 Categorias</span>
+               <span>{listaCategorias.length} / {limites.categorias}</span>
+             </div>
+             <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+               <div style={{ width: `${Math.min((listaCategorias.length / limites.categorias) * 100, 100)}%`, height: '100%', background: listaCategorias.length >= limites.categorias ? '#ef4444' : '#3b82f6', transition: '0.3s' }} />
+             </div>
+           </div>
         </div>
 
         <h3 style={styles.sideTitle}>{editId ? "📝 Editar Produto" : "📦 Novo Produto"}</h3>
         <input style={styles.input} value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do Produto *" />
         
+        <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '5px', display: 'block', marginTop: '10px' }}>SKU (Código)</label>
+        <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
+          <input style={{...styles.input, marginBottom: 0}} value={sku} onChange={e => setSku(e.target.value.toUpperCase())} placeholder="Ex: CAM-AZU-G" />
+          <button type="button" onClick={() => setIsModalSKUOpen(true)} style={{ padding: '0 10px', background: '#334155', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Gen</button>
+        </div>
+        
         <div style={{display:'flex', gap:'5px', marginBottom:'10px'}}>
-          <select style={{...styles.input, marginBottom:0, flex: 1}} value={categoria} onChange={e => setCategoria(e.target.value)}>
+          <select style={{...styles.input, marginBottom:0, flex: 1}} value={categoria} onChange={e => {setCategoria(e.target.value); setSubcategoria("");}}>
             <option value="">Categoria... *</option>
             {listaCategorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
           </select>
-          <button onClick={() => setShowCatManager(!showCatManager)} style={styles.btnActionSmall}>⚙️</button>
+          <button onClick={() => setShowCatManager(true)} style={styles.btnActionSmall}><FiSettings /></button>
         </div>
 
-        {showCatManager && (
-          <div style={styles.catManager}>
-            {listaCategorias.map(c => (
-              <div key={c.id} style={styles.catItem}>
-                <span style={{flex: 1}}>{c.nome}</span>
-                <div style={{display:'flex', gap:'4px'}}>
-                  <button onClick={() => {
-                    const n = prompt("Novo nome:", c.nome); 
-                    if(n && uid) updateDoc(doc(db,"lojistas",uid,"categorias",c.id),{nome:n});
-                  }} style={styles.btnMini}>✏️</button>
-                  <button onClick={() => {if(confirm("Excluir?") && uid) deleteDoc(doc(db,"lojistas",uid,"categorias",c.id))}} style={styles.btnMini}>❌</button>
-                </div>
-              </div>
+        {categoria && listaCategorias.find(c => c.nome === categoria)?.subcategorias?.length > 0 && (
+          <select style={styles.input} value={subcategoria} onChange={e => setSubcategoria(e.target.value)}>
+            <option value="">Subcategoria (Opcional)</option>
+            {listaCategorias.find(c => c.nome === categoria).subcategorias.map((sub: string, i: number) => (
+              <option key={i} value={sub}>{sub}</option>
             ))}
-            <button onClick={async () => {
-              if (listaCategorias.length >= limites.categorias) return alert("Limite de categorias atingido!");
-              const n = prompt("Nome da nova categoria:"); 
-              if(n && uid) await addDoc(collection(db,"lojistas",uid,"categorias"),{nome:n});
-            }} style={styles.btnAddCat}>+ Adicionar</button>
-          </div>
+          </select>
         )}
 
         <button onClick={() => setShowVarModal(true)} style={{...styles.btnUpload, border: '1px solid #ee4d2d', color: '#ee4d2d', fontWeight: 'bold', marginBottom: '10px'}}>
@@ -449,16 +450,23 @@ export default function CadastroProdutos() {
           🎯 Personalização ({Object.values(requisitos || {}).filter(Boolean).length})
         </button>
 
-        <div style={styles.freteBox}>
-          <label style={styles.checkLabel}>
-            <input type="checkbox" checked={precisaFrete} onChange={e => setPrecisaFrete(e.target.checked)} /> 
-            <span>Produto Físico (Frete)</span>
-          </label>
+        <div style={{...styles.boxGray, marginBottom: '10px'}}>
+            <label style={{fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '5px', display: 'block'}}>Configurações de Entrega</label>
+            <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
+                <label style={{...styles.checkLabel, cursor: 'pointer'}}>
+                    <input type="checkbox" checked={envioTransportadora} onChange={e => setEnvioTransportadora(e.target.checked)} />
+                    <span>Envio por Transportadora</span>
+                </label>
+                <label style={{...styles.checkLabel, cursor: 'pointer'}}>
+                    <input type="checkbox" checked={permiteRetirada} onChange={e => setPermiteRetirada(e.target.checked)} />
+                    <span>Permitir Retirada na Loja</span>
+                </label>
+            </div>
         </div>
 
         <textarea style={styles.textarea} value={descricao} onClick={() => setShowDescModal(true)} readOnly placeholder="Descrição... *" />
 
-        {precisaFrete ? (
+        {envioTransportadora ? (
           <div style={styles.boxGray}>
             <label style={styles.miniLabel}>Medidas Melhor Envio *</label>
             <div style={styles.grid2}>
@@ -470,7 +478,9 @@ export default function CadastroProdutos() {
           </div>
         ) : (
           <div style={{...styles.boxGray, background: '#fef2f2', border: '1px solid #fee2e2'}}>
-            <p style={{fontSize: '11px', color: '#b91c1c', margin: 0, fontWeight: 'bold', textAlign: 'center'}}>🚀 Kit Digital: Frete Ignorado</p>
+            <p style={{fontSize: '11px', color: '#b91c1c', margin: 0, fontWeight: 'bold', textAlign: 'center'}}>
+                {permiteRetirada ? '🏪 Produto para Retirada' : '📧 Produto Digital'}
+            </p>
           </div>
         )}
 
@@ -518,12 +528,7 @@ export default function CadastroProdutos() {
               <option value="Ocultos">🚫</option>
             </select>
             <button onClick={() => setModoMassa(!modoMassa)} style={{...styles.btnGeneric, background: modoMassa ? '#3b82f6' : '#fff', color: modoMassa ? '#fff' : '#3b82f6'}}>Massa</button>
-            
-            {/* BOTÃO DE EXPORTAÇÃO */}
-            <button 
-              onClick={exportarProdutosCSV} 
-              style={{...styles.btnGeneric, background: '#10b981', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '5px'}}
-            >
+            <button onClick={exportarProdutosCSV} style={{...styles.btnGeneric, background: '#10b981', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '5px'}}>
               <FiDownload /> Exportar
             </button>
           </div>
@@ -541,6 +546,10 @@ export default function CadastroProdutos() {
                 <button onClick={() => acaoEmMassa('ocultar')} style={{...styles.btnMass, color: '#64748b'}}>🚫 Ocultar</button>
                 <button onClick={() => acaoEmMassa('preco')} style={{...styles.btnMass, color: '#3b82f6'}}>💰 Preço</button>
                 <button onClick={() => acaoEmMassa('excluir')} style={{...styles.btnMass, color:'#ef4444', borderColor: '#fecaca'}}>🗑️ Excluir</button>
+                <button onClick={() => {
+                  const selecionadosObj = produtos.filter(p => selecionados.includes(p.id));
+                  setListaParaImprimir(selecionadosObj);
+                }} style={{...styles.btnMass, color: '#f59e0b'}}>🖨️ Imprimir Selecionados</button>
               </div>
             </div>
           )}
@@ -554,7 +563,6 @@ export default function CadastroProdutos() {
                 {p.destaque && <span style={styles.starBadge}>⭐</span>}
                 {modoMassa && <input type="checkbox" style={styles.cardCheck} checked={selecionados.includes(p.id)} onChange={e => e.target.checked ? setSelecionados([...selecionados, p.id]) : setSelecionados(selecionados.filter(id => id !== p.id))} />}
                 <img src={p.capa} style={styles.cardImg} alt={p.nome} />
-
                 <div style={styles.cardBody}>
                   <h4 style={styles.cardTitle}>{p.nome}</h4>
                   <div style={{display:'flex', alignItems:'center', gap:'5px', marginBottom:'4px'}}>
@@ -562,29 +570,37 @@ export default function CadastroProdutos() {
                     {lucro && <span style={styles.markupTag}>+{lucro}%</span>}
                   </div>
                   <div style={styles.cardActions}>
-                    <button onClick={() => uid && updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {destaque: !p.destaque})} style={styles.btnSlim}>{p.destaque ? "⭐ Destacado" : "☆ Destacar"}</button>
-                    <button onClick={() => {
-                      setEditId(p.id); setNome(p.nome); setCategoria(p.categoria || ""); setPrecoBasico(p.precoBasico || ""); 
-                      setCustoUnitario(p.custoUnitario || ""); setImagens(p.imagens || []); setDescricao(p.descricao || "");
-                      setPrecisaFrete(p.precisaFrete ?? true); setPeso(p.peso || ""); setComprimento(p.comprimento || "");
-                      setLargura(p.largura || ""); setAltura(p.altura || "");
-                      setRequisitos(p.requisitos || { pedeNome: false, pedeIdade: false, pedeData: false, pedeObs: false });
-
-                      if (p.variacoes) {
-                        setNomeVar1(p.nomeVar1 || "Cor"); setNomeVar2(p.nomeVar2 || "");
-                        const tab: any = {}; 
-                        p.variacoes.forEach((v: any) => { 
-                          const key = v.v2 ? `${v.v1}-${v.v2}` : v.v1;
-                          tab[key] = { preco: v.preco, custo: v.custo, foto: v.foto || "" };
-                        });
-                        setTabelaPrecos(tab);
-                        setOpcoesVar1([...new Set(p.variacoes.map((v:any) => v.v1))] as string[]);
-                        setOpcoesVar2([...new Set(p.variacoes.map((v:any) => v.v2).filter((v:any) => v))] as string[]);
-                      }
-                    }} style={styles.btnSlim}>✏️ Editar</button>
-                    <button onClick={() => uid && updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {ativo: !p.ativo})} style={styles.btnSlim}>{p.ativo ? "🚫 Ocultar" : "👁️ Mostrar"}</button>
-                    <button onClick={() => {if(confirm("Excluir?") && uid) deleteDoc(doc(db,"lojistas",uid,"produtos",p.id))}} style={styles.btnDelete}>🗑️ Excluir</button>
-                  </div>
+    <button onClick={() => uid && updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {destaque: !p.destaque})} style={styles.btnSlim}>{p.destaque ? "⭐ Destacado" : "☆ Destacar"}</button>
+    <button onClick={() => {
+        // (sua lógica de editar mantida)
+        setEditId(p.id); setNome(p.nome); setSku(p.sku || ""); setCategoria(p.categoria || ""); setSubcategoria(p.subcategoria || ""); 
+        setPrecoBasico(p.precoBasico || ""); 
+        setEnvioTransportadora(p.envioTransportadora ?? true); setPermiteRetirada(p.permiteRetirada ?? false); 
+        setCustoUnitario(p.custoUnitario || ""); setImagens(p.imagens || []); setDescricao(p.descricao || "");
+        setPeso(p.peso || ""); setComprimento(p.comprimento || "");
+        setLargura(p.largura || ""); setAltura(p.altura || "");
+        setRequisitos(p.requisitos || { pedeNome: false, pedeIdade: false, pedeData: false, pedeObs: false });
+        if (p.variacoes) {
+        setNomeVar1(p.nomeVar1 || ""); setNomeVar2(p.nomeVar2 || "");
+        const tab: any = {}; 
+        p.variacoes.forEach((v: any) => { 
+            const key = v.v2 ? `${v.v1}-${v.v2}` : v.v1;
+            tab[key] = { preco: v.preco, custo: v.custo, foto: v.foto || "",sku: v.sku || "" };
+        });
+        setTabelaPrecos(tab);
+        setOpcoesVar1([...new Set(p.variacoes.map((v:any) => v.v1))] as string[]);
+        setOpcoesVar2([...new Set(p.variacoes.map((v:any) => v.v2).filter((v:any) => v))] as string[]);
+        }
+    }} style={styles.btnSlim}>✏️ Editar</button>
+    
+    {/* Botão Ocultar/Mostrar */}
+    <button onClick={() => uid && updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {ativo: !p.ativo})} style={styles.btnSlim}>{p.ativo ? "🚫 Ocultar" : "👁️ Mostrar"}</button>
+    
+    {/* Botão Imprimir Etiqueta (NOVA POSIÇÃO) */}
+    <button onClick={() => setListaParaImprimir([p])} style={{...styles.btnSlim, background: '#f59e0b', color: '#fff', fontSize: '12px'}}>🖨️ Etiqueta</button>
+    
+    <button onClick={() => {if(confirm("Excluir?") && uid) deleteDoc(doc(db,"lojistas",uid,"produtos",p.id))}} style={styles.btnDelete}>🗑️ Excluir</button>
+</div>
                 </div>
               </div>
             );

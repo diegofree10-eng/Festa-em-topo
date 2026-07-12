@@ -1,441 +1,727 @@
 "use client";
 
 import { useCart } from "@/app/context/CartContext";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { db } from "@/lib/firebase";
-import { doc, onSnapshot, updateDoc, increment, getDoc, addDoc, collection } from "firebase/firestore";
+import { collection, query, where, getDocs, limit, doc, getDoc } from "firebase/firestore";
+import { ChevronLeft, Trash2, Plus, Minus, X, Gift, Mail } from "lucide-react";
+import CamposPersonalizacao from "../_components/CamposPersonalizacao";
+import { executarFluxoPedido } from "../_components/helperPedido";
 
-// --- FUNÇÕES DE APOIO ---
-const validarCPF = (cpf) => {
-  cpf = cpf.replace(/[^\d]+/g, '');
-  if (cpf.length !== 11 || !!cpf.match(/(\d)\1{10}/)) return false;
-  let cpfs = cpf.split('').map(el => +el);
-  const rest = (count) => (cpfs.slice(0, count - 12).reduce((sma, el, idx) => sma + el * (count - idx), 0) * 10) % 11 % 10;
-  return rest(10) === cpfs[9] && rest(11) === cpfs[10];
-};
-
-const consolidarPacote = (itens) => {
-  let pesoTotal = 0; let alturaAcumulada = 0; let larguraMax = 0; let comprimentoMax = 0;
-  itens.forEach(item => {
-    const qtd = item.qty || 1;
-    let pesoUnitario = Number(item.peso) || 0.03;
-    if (pesoUnitario >= 1) pesoUnitario = pesoUnitario / 1000; 
-    pesoTotal += pesoUnitario * qtd;
-    alturaAcumulada += (Number(item.altura) || 0.3) * qtd;
-    larguraMax = Math.max(larguraMax, Number(item.largura) || 22);
-    comprimentoMax = Math.max(comprimentoMax, Number(item.comprimento) || 33);
-  });
-  let medidas = [Math.max(22, larguraMax), Math.max(33, comprimentoMax), Math.ceil(alturaAcumulada)];
-  medidas.sort((a, b) => a - b);
-  return { 
-    peso: Number(pesoTotal.toFixed(3)), 
-    altura: Math.min(25, Math.max(4, medidas[0])), 
-    largura: Math.max(11, medidas[1]), 
-    comprimento: Math.max(16, medidas[2]) 
-  };
-};
-
-export default function Carrinho() {
-  const { cart, addToCart, decrease, removeFromCart, clearCart } = useCart();
+export default function CarrinhoIdentidadeVisual() {
+  const { cart, setItemQty, removeFromCart, clearCart } = useCart();
   const router = useRouter();
   const params = useParams();
   
-  const lojistaId = cart[0]?.lojistaId || params.lojistaId; 
+  const lojistaSlug = (params?.lojista as string) || (params?.slug as string) || "";
 
-  const [dadosLoja, setDadosLoja] = useState({ 
-    cep: "", 
-    cidade: "", 
-    chavePix: "", 
-    aberta: true,
-    transportadoras: {},
-    whatsapp: "",
-    banner: "", // Banner do lojista
-    cupons: {}  // Cupons configurados
-  });
-  
-  const [nomeCliente, setNomeCliente] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [cep, setCep] = useState("");
-  const [rua, setRua] = useState("");
-  const [numero, setNumero] = useState(""); 
-  const [bairro, setBairro] = useState("");
-  const [cidade, setCidade] = useState("");
-  const [uf, setUf] = useState("");
-  
-  const [nomeCrianca, setNomeCrianca] = useState("");
-  const [idadeCrianca, setIdadeCrianca] = useState("");
+  const isItemDigital = useCallback((item: any) => 
+    item.precisaFrete === false && 
+    item.envioTransportadora === false && 
+    item.permiteRetirada === false, []);
 
-  const [opcoesFrete, setOpcoesFrete] = useState([]);
-  const [freteSelecionado, setFreteSelecionado] = useState(null);
-  const [calculandoFrete, setCalculandoFrete] = useState(false);
-  const [erro, setErro] = useState("");
-  const [carregando, setCarregando] = useState(false);
-  const [pedidoEnviado, setPedidoEnviado] = useState(false);
+  const [dadosLoja, setDadosLoja] = useState<any>(null);
+  const [lojistaId, setLojistaId] = useState<string | null>(null);
+  const [cupomDigitado, setCupomDigitado] = useState("");
+  const [descontoAtivo, setDescontoAtivo] = useState({ valor: 0, tipo: "" });
+  const [requisitosDoBanco, setRequisitosDoBanco] = useState<Record<string, any>>({});
 
-  // Estados do Cupom
-  const [cupomInput, setCupomInput] = useState("");
-  const [descontoAtivo, setDescontoAtivo] = useState(0);
-  const [cupomAplicado, setCupomAplicado] = useState(null);
+  const safeCart = useMemo(() => Array.isArray(cart) ? cart : [], [cart]);
+  const temFrete = useMemo(() => safeCart.some(item => !isItemDigital(item)), [safeCart, isItemDigital]);
 
-  const itensFisicos = useMemo(() => cart.filter(item => !(item.nome || "").toLowerCase().includes("digital")), [cart]);
-  const isCarrinhoApenasDigital = useMemo(() => cart.length > 0 && itensFisicos.length === 0, [cart, itensFisicos]);
-  const temKitFesta = useMemo(() => cart.some(item => (item.nome || "").toLowerCase().includes("kit festa")), [cart]);
-  
-  const subtotal = useMemo(() => cart.reduce((acc, item) => acc + (Number(item.preco || 0) * item.qty), 0), [cart]);
-  const valorFreteFinal = useMemo(() => Number(freteSelecionado?.price || 0), [freteSelecionado]);
-  const totalGeral = (subtotal - descontoAtivo) + valorFreteFinal;
+const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone: "" });
+  const [endereco, setEndereco] = useState({ rua: "", numero: "", bairro: "", cidade: "", uf: "", complemento: "" });
+  const [personalizacoes, setPersonalizacoes] = useState<Record<string, Record<string, string>>>({});
 
   useEffect(() => {
-    if (lojistaId) {
-      const unsub = onSnapshot(doc(db, "lojistas", lojistaId), (snap) => {
-        if (snap.exists()) {
-          const d = snap.data();
-          setDadosLoja({
-            cep: d.cep || "", 
-            cidade: d.cidade || "", 
-            chavePix: d.chavePix || "", 
-            aberta: d.ativo ?? true,
-            transportadoras: d.transportadoras || {},
-            whatsapp: d.whatsapp || "",
-            banner: d.bannerImg || d.banner || "", // Ajuste conforme seu campo no Firebase
-            cupons: d.cupons || {}
-          });
-        }
-      });
-      return () => unsub();
+  if (typeof window !== "undefined" && lojistaSlug) {
+    const c = localStorage.getItem(`cliente_${lojistaSlug}`);
+    const e = localStorage.getItem(`end_${lojistaSlug}`);
+    const p = localStorage.getItem(`pers_${lojistaSlug}`);
+
+    if (c) {
+      try {
+        const parsed = JSON.parse(c);
+        setCliente({
+          nome: parsed.nome || "",
+          cpf: parsed.cpf || "",
+          cep: parsed.cep || "",
+          dsTelefone: parsed.dsTelefone || ""
+        });
+      } catch (err) {
+        console.error("Erro ao parsear cliente", err);
+      }
     }
-  }, [lojistaId]);
+
+    if (e) {
+      try {
+        const parsed = JSON.parse(e);
+        setEndereco({
+          rua: parsed.rua || "",
+          numero: parsed.numero || "",
+          bairro: parsed.bairro || "",
+          cidade: parsed.cidade || "",
+          uf: parsed.uf || "",
+          complemento: parsed.complemento || ""
+        });
+      } catch (err) {
+        console.error("Erro ao parsear endereço", err);
+      }
+    }
+
+    if (p) {
+      try {
+        setPersonalizacoes(JSON.parse(p));
+      } catch (err) {
+        console.error("Erro ao parsear personalizacoes", err);
+      }
+    }
+  }
+}, [lojistaSlug]);
+  
+  const [opcoesFrete, setOpcoesFrete] = useState<any[]>([]);
+  const [freteSel, setFreteSel] = useState<any>(null);
+  const [loadingFrete, setLoadingFrete] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [listaFreteCache, setListaFreteCache] = useState<any[]>([]);
+  const [freteBackup, setFreteBackup] = useState<any>(null);
+
+  const config = useMemo(() => ({
+    corDestaque: dadosLoja?.tema?.corPrincipal || "#FFCC80",
+    corSecundaria: dadosLoja?.tema?.corSecundaria || "#fdf5eb",
+    corFundoSite: dadosLoja?.tema?.corFundo || "#FFF9F2",
+    corTexto: dadosLoja?.tema?.corTextoCard || "#8B5E3C",
+    whatsapp: dadosLoja?.whatsapp || ""
+  }), [dadosLoja]);
+
+  const validarCPFReal = (cpf: string): boolean => {
+    const limpo = cpf.replace(/\D/g, "");
+    if (limpo.length !== 11 || /^(\d)\1{10}$/.test(limpo)) return false;
+    let soma = 0; let resto;
+    for (let i = 1; i <= 9; i++) soma += parseInt(limpo.substring(i - 1, i)) * (11 - i);
+    resto = (soma * 10) % 11;
+    if (resto === 10 || resto === 11) resto = 0;
+    if (resto !== parseInt(limpo.substring(9, 10))) return false;
+    soma = 0;
+    for (let i = 1; i <= 10; i++) soma += parseInt(limpo.substring(i - 1, i)) * (12 - i);
+    resto = (soma * 10) % 11;
+    if (resto === 10 || resto === 11) resto = 0;
+    if (resto !== parseInt(limpo.substring(10, 11))) return false;
+    return true;
+  };
+
+  const cpfValido = useMemo(() => {
+    if (!cliente.cpf) return true;
+    const limpo = cliente.cpf.replace(/\D/g, "");
+    if (limpo.length < 11) return true; 
+    return validarCPFReal(cliente.cpf);
+  }, [cliente.cpf]);
+
+  const aplicarMascaraCPF = (valor: string) => {
+    const limpo = valor.replace(/\D/g, "");
+    if (limpo.length > 11) return valor.substring(0, 14);
+    return limpo.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2").substring(0, 14);
+  };
+
+  const aplicarMascaraCEP = (valor: string) => {
+    const limpo = valor.replace(/\D/g, "");
+    return limpo.replace(/(\d{5})(\d)/, "$1-$2").substring(0, 9);
+  };
+
+  const valorSubtotalProdutos = useMemo(() => {
+    return safeCart.reduce((acc, item) => acc + (Number(item.preco || item.price || 0) * Number(item.qty || 1)), 0);
+  }, [safeCart]);
+
+  const freteGratisConfig = useMemo(() => {
+    if (!dadosLoja?.freteGratisAtivo) return { ativo: false, atingido: false, minimo: 0, falta: 0 };
+    const valorLimpo = String(dadosLoja.valorMinimoFreteGratis || "0").replace(/\./g, "").replace(",", ".");
+    const valorMinimo = parseFloat(valorLimpo) || 0;
+    const atingido = valorSubtotalProdutos >= valorMinimo;
+    const falta = Math.max(0, valorMinimo - valorSubtotalProdutos);
+    return { ativo: true, atingido, minimo: valorMinimo, falta };
+  }, [dadosLoja, valorSubtotalProdutos]);
 
   useEffect(() => {
-    if (isCarrinhoApenasDigital) {
-      const optDigital = { id: 'digital', name: 'Envio Digital (E-mail/WhatsApp)', price: 0, company: { name: 'Festa em Topo' } };
-      setOpcoesFrete([optDigital]); 
-      setFreteSelecionado(optDigital); 
-    } else if (cep.length === 8) {
-      processarEntrega();
+    // 1. Se o carrinho não exige frete, limpa e sai
+    if (!temFrete) {
+      setOpcoesFrete([]);
+      return;
     }
-  }, [cep, isCarrinhoApenasDigital, dadosLoja.transportadoras]);
 
-  async function processarEntrega() {
-    setCalculandoFrete(true);
-    setErro("");
-    try {
-      const resCli = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-      const dataCli = await resCli.json();
-      if (dataCli.erro) { setErro("CEP não encontrado."); return; }
+    // 2. Se a lista de fretes da API chegou
+// 2. Se a lista de fretes da API chegou
+  if (listaFreteCache.length > 0) {
+    const freteGratisAtivo = !!dadosLoja?.freteGratisAtivo;
+    const atingiuGratis = freteGratisConfig.atingido;
+    
+    // Sempre filtra as transportadoras permitidas pelo lojista
+    const transportadorasAtivas = dadosLoja?.transportadoras || {};
+    const listaFiltrada = listaFreteCache.filter((f: any) => {
+      const idLower = String(f.id).toLowerCase();
+      if (idLower.includes("correios") || idLower.includes("pac") || idLower.includes("sedex")) return !!transportadorasAtivas.correios;
+      if (idLower.includes("azul")) return !!transportadorasAtivas.azul;
+      if (idLower.includes("jadlog")) return !!transportadorasAtivas.jadlog;
+      if (idLower.includes("latam")) return !!transportadorasAtivas.latam;
+      return true; 
+    });
+
+    let listaFinal = [];
+
+    if (freteGratisAtivo && atingiuGratis) {
+      // REGRA: Atingiu o Frete Grátis -> Exibe APENAS a opção gratuita
+      const opcaoGratuita = { id: "frete_gratis_ativado", name: "Frete Grátis Promocional", price: 0 };
+      listaFinal = [opcaoGratuita];
       
-      setRua(dataCli.logradouro); setBairro(dataCli.bairro); setCidade(dataCli.localidade); setUf(dataCli.uf);
+      // Auto-seleciona o Frete Grátis
+      setFreteSel(opcaoGratuita);
+    } else {
+      // REGRA: Não atingiu -> Exibe as opções pagas filtradas
+      listaFinal = listaFiltrada;
+      
+      // Se não houver seleção ou a anterior era o grátis, seleciona a primeira da lista
+      if (!freteSel || freteSel.id === "frete_gratis_ativado") {
+        setFreteSel(listaFinal.length > 0 ? listaFinal[0] : null);
+      }
+    }
 
-      const resJad = await fetch("/api/frete/calcular", {
+    setOpcoesFrete(listaFinal);
+  }
+  }, [
+    listaFreteCache.length,
+    freteGratisConfig.atingido,
+    !!dadosLoja?.freteGratisAtivo,
+    temFrete,
+    freteSel?.id,
+    // Em vez de passar o objeto inteiro, passamos o tamanho das chaves ou um valor simples
+    JSON.stringify(dadosLoja?.transportadoras || {})
+  ]);
+  const valorDesconto = useMemo(() => {
+    if (descontoAtivo.tipo === "fixo") return descontoAtivo.valor;
+    if (descontoAtivo.tipo === "porcentagem") return valorSubtotalProdutos * (descontoAtivo.valor / 100);
+    return 0;
+  }, [valorSubtotalProdutos, descontoAtivo]);
+
+  const valorSubTotalComDesconto = useMemo(() => Math.max(0, valorSubtotalProdutos - valorDesconto), [valorSubtotalProdutos, valorDesconto]);
+  const totalGeral = useMemo(() => {
+  if (!temFrete) return valorSubTotalComDesconto;
+
+  // Se atingiu o frete grátis, o valor é 0, senão usa o preço selecionado
+  const valorDoFrete = (freteGratisConfig.atingido) ? 0 : Number(freteSel?.price || 0);
+  
+  return valorDoFrete + valorSubTotalComDesconto;
+}, [
+  valorSubTotalComDesconto, 
+  freteSel?.price, // <--- AQUI ESTÁ O SEGREDO: dependa do preço, não do objeto inteiro
+  temFrete, 
+  freteGratisConfig.atingido
+]);
+  const verificarRequisitosValidos = (requisitosAtivos: any) => {
+    if (!requisitosAtivos) return false;
+    if (Array.isArray(requisitosAtivos)) return requisitosAtivos.some((r: any) => r && (r.label || r.id));
+    if (typeof requisitosAtivos === "object") {
+      return (requisitosAtivos.pedeNome || requisitosAtivos.pedeIdade || requisitosAtivos.pedeData || requisitosAtivos.pedeObs);
+    }
+    return false;
+  };
+
+  const lojistaAtivouEPlanoLiberou = useCallback((gateway: "mercado_pago" | "pagseguro") => {
+    if (!dadosLoja) return false;
+    const ativoNoLojista = gateway === "mercado_pago" ? !!dadosLoja.mercadoPago?.ativo : !!dadosLoja.pagseguro?.ativo;
+    if (!ativoNoLojista) return false;
+    const sandboxAtivo = dadosLoja?.pagseguro?.sandbox === true || dadosLoja?.mercadoPago?.sandbox === true;
+    if (sandboxAtivo) return true;
+    const plano = dadosLoja.plano || "Bronze";
+    if (gateway === "mercado_pago") return plano === "Prata" || plano === "Ouro";
+    if (gateway === "pagseguro") return plano === "Ouro";
+    return false;
+  }, [dadosLoja]);
+
+  const temCheckoutOnlineAtivo = useCallback(() => lojistaAtivouEPlanoLiberou("mercado_pago") || lojistaAtivouEPlanoLiberou("pagseguro"), [lojistaAtivouEPlanoLiberou]);
+
+  const podeFinalizar = useMemo(() => {
+  if (dadosLoja && dadosLoja.lojaAberta === false) return false;
+  
+  const validacaoEntrega = temFrete 
+    ? (cliente.cep.replace(/\D/g, "").length === 8 && endereco.numero.trim().length > 0 && freteSel !== null) 
+    : true;
+
+  // Validação atualizada usando dsTelefone
+  const baseValid = 
+    cliente.nome.trim().length > 3 && 
+    validarCPFReal(cliente.cpf) && 
+    cliente.dsTelefone.replace(/\D/g, "").length >= 10 && 
+    validacaoEntrega && 
+    safeCart.length > 0;
+
+  if (!baseValid) return false;
+
+  for (let i = 0; i < safeCart.length; i++) {
+    const item = safeCart[i];
+    const key = item.cartItemKey || `item_${i}`;
+    const requisitosAtivos = item.requisitos || requisitosDoBanco[item.id];
+    if (requisitosAtivos) {
+      const respostasItem = personalizacoes[key] || {};
+      if (Array.isArray(requisitosAtivos)) {
+        for (const req of requisitosAtivos) {
+          if (req?.obrigatorio && (!respostasItem[String(req.id)] || !respostasItem[String(req.id)].trim())) return false;
+        }
+      } else if (typeof requisitosAtivos === "object") {
+        if (requisitosAtivos.pedeNome && (!respostasItem.nome || !respostasItem.nome.trim())) return false;
+        if (requisitosAtivos.pedeIdade && (!respostasItem.idade || !respostasItem.idade.trim())) return false;
+        if (requisitosAtivos.pedeData && (!respostasItem.data || !respostasItem.data.trim())) return false;
+      }
+    }
+  }
+  return true;
+}, [cliente, endereco, freteSel, safeCart, personalizacoes, requisitosDoBanco, dadosLoja, temFrete]);
+  useEffect(() => {
+    async function carregarDono() {
+      if (!lojistaSlug) return;
+      try {
+        const q = query(collection(db, "lojistas"), where("slug", "==", lojistaSlug), limit(1));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          setLojistaId(querySnapshot.docs[0].id);
+          setDadosLoja(querySnapshot.docs[0].data());
+        }
+      } catch (err) { console.error("Erro ao carregar dados da loja:", err); }
+    }
+    carregarDono();
+  }, [lojistaSlug]);
+
+  useEffect(() => {
+    if (!lojistaId || safeCart.length === 0) return;
+    async function sincronizarRequisitos() {
+      try {
+        const novosRequisitos: Record<string, any> = {};
+        for (const item of safeCart) {
+          if (item.id && !novosRequisitos[item.id]) {
+            const produtoRef = doc(db, "lojistas", lojistaId!, "produtos", item.id);
+            const snap = await getDoc(produtoRef);
+            if (snap.exists() && snap.data().requisitos) {
+              novosRequisitos[item.id] = snap.data().requisitos;
+            }
+          }
+        }
+        setRequisitosDoBanco(prev => ({ ...prev, ...novosRequisitos }));
+      } catch (err) { console.error("Erro ao sincronizar requisitos:", err); }
+    }
+    sincronizarRequisitos();
+  }, [safeCart, lojistaId]);
+
+  const aplicarCupom = () => {
+    if (!dadosLoja?.cupons) return alert("Esta loja não possui cupons cadastrados.");
+    const cupomEncontrado = dadosLoja.cupons[cupomDigitado.toUpperCase().trim()];
+    if (cupomEncontrado && cupomEncontrado.ativo) {
+      setDescontoAtivo({ valor: Number(cupomEncontrado.valor), tipo: cupomEncontrado.tipo });
+      alert("Cupom aplicado com sucesso!");
+    } else { alert("Cupom inválido ou expirado."); }
+  };
+
+  const limparTudo = () => {
+    clearCart();
+    localStorage.removeItem(`cliente_${lojistaSlug}`);
+    localStorage.removeItem(`end_${lojistaSlug}`);
+    localStorage.removeItem(`pers_${lojistaSlug}`);
+    setCliente({ nome: "", cpf: "", cep: "", dsTelefone: "" });
+    setEndereco({ rua: "", numero: "", bairro: "", cidade: "", uf: "", complemento: "" });
+    setPersonalizacoes({});
+    setFreteSel(null);
+    setOpcoesFrete([]);
+    router.push("/" + lojistaSlug);
+  };
+
+  const limparCupom = () => { setCupomDigitado(""); setDescontoAtivo({ valor: 0, tipo: "" }); };
+
+  useEffect(() => {
+  const cepClienteLimpo = cliente.cep.replace(/\D/g, "");
+
+  // 1. Validação inicial e reset
+  if (safeCart.length === 0 || !temFrete || cepClienteLimpo.length !== 8 || !lojistaId) {
+    setOpcoesFrete([]);
+    setFreteSel(null);
+    setLoadingFrete(false);
+    return;
+  }
+
+  setLoadingFrete(true);
+
+  async function calcularTudo() {
+    try {
+      // Busca dados do CEP
+      const rVia = await fetch(`https://viacep.com.br/ws/${cepClienteLimpo}/json/`);
+      const dadosCliente = await rVia.json();
+      if (dadosCliente.erro) { throw new Error("CEP inválido"); }
+
+      // Atualiza endereço base
+      setEndereco(prev => ({ 
+        ...prev, 
+        rua: dadosCliente.logradouro || "", 
+        bairro: dadosCliente.bairro || "", 
+        cidade: dadosCliente.localidade || "", 
+        uf: dadosCliente.uf || "" 
+      }));
+
+      // Calcula frete na API
+      const rFrete = await fetch(`${window.location.origin}/api/frete/calcular`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          cepDestino: cep.replace(/\D/g, ""),
-          pacote: consolidarPacote(itensFisicos),
-          lojistaId: lojistaId 
+          cepDestino: cepClienteLimpo, lojistaId, itensFiltrados: safeCart,
+          pacote: { peso: 0.5, altura: 10, largura: 20, comprimento: 20 } 
         })
       });
       
-      const dataJad = await resJad.json();
-      let transportadorasFinal = [];
+      const listaBruta = await rFrete.json();
+      let listaCalculada = Array.isArray(listaBruta) ? listaBruta.filter((f: any) => !f.error) : [];
 
-      if (resJad.ok && Array.isArray(dataJad)) {
-        transportadorasFinal = dataJad.filter(opt => {
-          const nomeApi = opt.company?.name.toLowerCase();
-          const tPermitidas = dadosLoja.transportadoras;
-          if (nomeApi.includes("jadlog") && tPermitidas.jadlog === true) return true;
-          if (nomeApi.includes("correios") && tPermitidas.correios === true) return true;
-          if (nomeApi.includes("azul") && tPermitidas.azul === true) return true;
-          if (nomeApi.includes("latam") && tPermitidas.latam === true) return true;
-          return false;
-        });
+      // Lógica de Retirada na loja
+      const cidCli = dadosCliente.localidade?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const cidLoj = dadosLoja?.cidade?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (cidCli && cidLoj && cidCli === cidLoj) {
+        listaCalculada.unshift({ id: "retirar_loja", name: "Retirar na Loja", price: 0 });
       }
 
-      // AJUSTE: Adiciona Retirada na Loja junto com as outras se for a mesma cidade
-      const cidadeCliente = dataCli.localidade.toLowerCase().trim();
-      const cidadeLoja = dadosLoja.cidade.toLowerCase().trim();
+      // Filtragem de transportadoras
+      // ... (código anterior: busca cep, API de frete, retirada na loja)
 
-      if (cidadeCliente === cidadeLoja) {
-        const opcaoRetirada = { id: 'retirada', name: 'Retirar na Loja', price: 0, company: { name: 'Festa em Topo' } };
-        const listaFinal = [opcaoRetirada, ...transportadorasFinal];
-        setOpcoesFrete(listaFinal);
-        setFreteSelecionado(opcaoRetirada);
+      // Filtragem de transportadoras
+      const permitidas = dadosLoja?.transportadoras || {};
+      let listaFiltrada = listaCalculada.filter((f: any) => {
+        const idLower = String(f.id).toLowerCase();
+        if (idLower.includes("correios") || idLower.includes("pac") || idLower.includes("sedex")) return !!permitidas.correios;
+        if (idLower.includes("azul")) return !!permitidas.azul;
+        if (idLower.includes("jadlog")) return !!permitidas.jadlog;
+        if (idLower.includes("latam")) return !!permitidas.latam;
+        return true;
+      });
+
+      // --- MUDANÇA AQUI: LÓGICA DE EXCLUSIVIDADE ---
+      let listaFinal = [];
+
+      if (freteGratisConfig.atingido) {
+        // SE ATINGIU: Exclui TUDO e mostra APENAS o Frete Grátis
+        const opcaoGratuita = { id: "frete_gratis_ativado", name: "Frete Grátis Promocional", price: 0 };
+        listaFinal = [opcaoGratuita];
+        setFreteSel(opcaoGratuita);
       } else {
-        setOpcoesFrete(transportadorasFinal);
-        if (transportadorasFinal.length > 0) setFreteSelecionado(transportadorasFinal[0]);
+        // SE NÃO ATINGIU: Mostra as pagas permitidas
+        listaFinal = listaFiltrada;
+        
+        if (listaFinal.length > 0) {
+          // PROCURA O FRETE JÁ SELECIONADO NA NOVA LISTA PARA PEGAR O PREÇO ATUALIZADO
+          const freteAtualizado = listaFinal.find(f => f.id === freteSel?.id);
+          
+          if (freteAtualizado) {
+            // Atualiza com o preço novo que a API acabou de calcular
+            setFreteSel(freteAtualizado);
+          } else {
+            // Se o frete antigo não existe mais na lista, seleciona o primeiro
+            setFreteSel(listaFinal[0]);
+          }
+        } else {
+          setFreteSel(null);
+        }
       }
-    } catch (e) { setErro("Erro ao calcular frete."); } finally { setCalculandoFrete(false); }
-  }
 
-  function aplicarCupom() {
-    const cupom = cupomInput.trim().toUpperCase();
-    if (!cupom) return;
-
-    const infoCupom = dadosLoja.cupons[cupom];
-    if (infoCupom && infoCupom.ativo) {
-      let vDesconto = 0;
-      if (infoCupom.tipo === "fixo") vDesconto = Number(infoCupom.valor);
-      if (infoCupom.tipo === "porcentagem") vDesconto = subtotal * (Number(infoCupom.valor) / 100);
+      setOpcoesFrete(listaFinal);
+      setLoadingFrete(false);
       
-      setDescontoAtivo(vDesconto);
-      setCupomAplicado(cupom);
-      setErro("");
-    } else {
-      setErro("❌ Cupom inválido ou expirado.");
-      setDescontoAtivo(0);
-      setCupomAplicado(null);
+      
+    } catch (err) {
+      console.error("Erro na cotação:", err);
+      setLoadingFrete(false);
     }
   }
 
-  const pixPayload = useMemo(() => {
-    if (!dadosLoja.chavePix || totalGeral <= 0) return "";
+  calcularTudo();
+}, [
+  cliente.cep || "",
+  lojistaId || "",
+  !!temFrete,
+  safeCart.map(i => `${i.id}-${i.qty}`).join('|'), 
+  dadosLoja?.cep || "",
+  dadosLoja?.CEP || "",
+  JSON.stringify(dadosLoja?.transportadoras || {}), 
+  dadosLoja?.cidade || "",
+  // Use um valor primitivo calculado aqui, em vez do objeto inteiro:
+  valorSubtotalProdutos >= (parseFloat(String(dadosLoja?.valorMinimoFreteGratis || "0").replace(/\./g, "").replace(",", ".")) || 0)
+]);
+
+  useEffect(() => {
+    if (temCheckoutOnlineAtivo()) { setQrCodeUrl(""); return; }
+    const fontPix = dadosLoja?.chavePix || dadosLoja?.pix || "";
+    if (!fontPix || totalGeral <= 0) { setQrCodeUrl(""); return; }
     const v = totalGeral.toFixed(2);
-    const f = (id, val) => id + String(val.length).padStart(2, "0") + val;
-    let p = f("00", "01") + f("26", f("00", "br.gov.bcb.pix") + f("01", dadosLoja.chavePix)) + f("52", "0000") + f("53", "986") + f("54", v) + f("58", "BR") + f("59", "FESTA EM TOPO") + f("60", "SJC") + f("62", f("05", "***")) + "6304"; 
-    const crc16 = (s) => {
+    const f = (id: string, val: string) => id + String(val.length).padStart(2, "0") + val;
+    let payload = f("00", "01") + f("26", f("00", "br.gov.bcb.pix") + f("01", fontPix.trim())) + f("52", "0000") + f("53", "986") + f("54", v) + f("58", "BR") + f("59", "LOJA") + f("60", "CIDADE") + f("62", f("05", "***")) + "6304"; 
+    const crc16 = (s: string) => {
       let c = 0xFFFF;
       for (let i = 0; i < s.length; i++) {
         c ^= s.charCodeAt(i) << 8;
-        for (let j = 0; j < 8; j++) { if ((c & 0x8000) !== 0) c = (c << 1) ^ 0x1021; else c <<= 1; }
+        for (let j = 0; j < 8; j++) { if ((c & 0x8000) !== 0) c = (c << 1) ^ 0x1021; else c << 1; }
       }
       return (c & 0xFFFF).toString(16).toUpperCase().padStart(4, "0");
     };
-    return p + crc16(p);
-  }, [dadosLoja.chavePix, totalGeral]);
+    setQrCodeUrl("https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=" + encodeURIComponent(payload + crc16(payload)));
+  }, [dadosLoja, totalGeral, temCheckoutOnlineAtivo]);
 
-  async function enviarWhatsApp() {
-    if (!nomeCliente.trim() || !validarCPF(cpf)) { setErro("⚠️ Nome ou CPF inválido."); return; }
-    if (temKitFesta && (!nomeCrianca.trim() || !idadeCrianca.trim())) { setErro("⚠️ Informe Nome e Idade para o Kit Festa."); return; }
-    if (!isCarrinhoApenasDigital && (!rua.trim() || !freteSelecionado)) { setErro("⚠️ Preencha endereço e frete."); return; }
-    if (!dadosLoja.whatsapp) { setErro("⚠️ Erro: WhatsApp do lojista não configurado."); return; }
+  const finalizarNoWhatsApp = async () => {
+    if (!podeFinalizar || !config.whatsapp || !lojistaId) return;
+    const formaEnvio = !temFrete ? 'digital' : (freteSel?.id === 'retirar_loja' ? 'retirada' : 'transportadora');
+    const logistica = { formaEnvio, servico: freteSel?.name || "N/A", valorFrete: freteSel?.price || 0, transportadoraId: formaEnvio === 'transportadora' ? (freteSel?.id || "padrao") : null };
+    const itensProcessados = safeCart.map(item => ({ ...item, precisaFrete: !!item.precisaFrete, envioTransportadora: !!item.envioTransportadora, permiteRetirada: !!item.permiteRetirada, foto: item.foto || item.imagem || item.url || "", sku: item.sku || "SEM-SKU" }));
+    await executarFluxoPedido({ lojistaId, lojistaSlug, cliente, endereco, personalizacoes, requisitosDoBanco, valorSubtotalProdutos, valorDesconto, totalGeral, safeCart: itensProcessados, freteSel: temFrete ? freteSel : { id: "sem_frete", name: "Entrega Digital", price: 0 }, freteBackup, freteGratisConfig, whatsappNumero: config.whatsapp.replace(/\D/g, ""), dadosLoja: dadosLoja, logistica: logistica });
+  };
 
-    setCarregando(true);
-    try {
-      const pedidosRef = doc(db, "config", "pedidos");
-      await updateDoc(pedidosRef, { contador: increment(1) });
-      const snap = await getDoc(pedidosRef);
-      const n = snap.data()?.contador || 0;
-
-      const orderData = {
-        numeroPedido: n,
-        cliente: nomeCliente,
-        cpf,
-        data: new Date().toLocaleString("pt-BR"),
-        itens: cart.map(i => ({ nome: i.nome, qty: i.qty, preco: i.preco, variacao: i.variacao || "Padrão" })),
-        personalizacao: temKitFesta ? { nome: nomeCrianca, idade: idadeCrianca } : null,
-        financeiro: { subtotal, desconto: descontoAtivo, cupom: cupomAplicado, frete: valorFreteFinal, total: totalGeral, metodo: freteSelecionado.name },
-        endereco: isCarrinhoApenasDigital ? "Digital" : { rua, numero, bairro, cidade, uf, cep },
-        lojistaId,
-        status: "Pendente"
-      };
-
-      await addDoc(collection(db, "registros_pedidos"), orderData);
-
-      let msgItens = cart.map(i => `• ${i.qty}x ${i.nome} ${i.variacao ? `[${i.variacao}]` : ""}`).join("%0A");
-      let msgEnd = isCarrinhoApenasDigital ? "📦 *Entrega:* Digital" : `📍 *Entrega:* ${rua}, ${numero} (${freteSelecionado.name})`;
-      let msgPerso = temKitFesta ? `%0A📝 *Personalização:* ${nomeCrianca} - ${idadeCrianca} anos` : "";
-      let msgCupom = cupomAplicado ? `%0A🎟️ *Cupom:* ${cupomAplicado} (-R$ ${descontoAtivo.toFixed(2)})` : "";
-
-      const msgFinal = `🛒 *PEDIDO Nº ${n}*%0A%0A👤 *Cliente:* ${nomeCliente}%0A🆔 *CPF:* ${cpf}%0A%0A📦 *Produtos:*%0A${msgItens}${msgPerso}${msgCupom}%0A%0A${msgEnd}%0A💰 *FRETE:* R$ ${valorFreteFinal.toFixed(2)}%0A🚀 *TOTAL: R$ ${totalGeral.toFixed(2).replace(".", ",")}*`;
-      
-      const foneLimpo = dadosLoja.whatsapp.replace(/\D/g, "");
-      const link = `https://wa.me/${foneLimpo.startsWith("55") ? foneLimpo : "55" + foneLimpo}?text=${msgFinal}`;
-      
-      window.open(link, "_blank");
-      setPedidoEnviado(true);
-      setErro("");
-    } catch (e) { setErro("Erro ao registrar pedido."); } finally { setCarregando(false); }
-  }
+  const atualizarSubCampoPersonalizacao = (key: string, campoId: string, valorBruto: string) => {
+    let valorFinal = valorBruto;
+    const itemNoCarrinho = safeCart.find((i: any) => i.cartItemKey === key || `item_${safeCart.indexOf(i)}` === key);
+    const requisitosAtivos = itemNoCarrinho?.requisitos || requisitosDoBanco[itemNoCarrinho?.id || ""];
+    const campoAlvo = Array.isArray(requisitosAtivos) ? requisitosAtivos.find((r: any) => String(r.id) === String(campoId)) : null;
+    if (campoAlvo && campoAlvo.tipo === "time") {
+      let limpo = valorBruto.replace(/\D/g, "");
+      if (limpo.length > 4) limpo = limpo.substring(0, 4);
+      if (limpo.length >= 2) {
+        let horas = parseInt(limpo.substring(0, 2), 10);
+        if (horas > 23) horas = 23;
+        limpo = String(horas).padStart(2, "0") + limpo.substring(2);
+      }
+      if (limpo.length === 4) {
+        let minutes = parseInt(limpo.substring(2, 4), 10);
+        if (minutes > 59) minutes = 59;
+        limpo = limpo.substring(0, 2) + String(minutes).padStart(2, "0");
+      }
+      valorFinal = limpo.length > 2 ? limpo.substring(0, 2) + ":" + limpo.substring(2) : limpo;
+    }
+    setPersonalizacoes(prev => ({ ...prev, [key]: { ...prev[key], [String(campoId)]: valorFinal } }));
+  };
 
   return (
-    <div style={styles.page}>
-      {/* Banner de Identidade Visual */}
-      <div style={{...styles.bannerContainer, backgroundImage: `url(${dadosLoja.banner || 'https://via.placeholder.com/1200x200?text=Sua+Loja'})`}}>
-          <div style={styles.bannerOverlay}>
-            <h1 style={{margin: 0, color: '#fff'}}>🛒 Finalizar Compra</h1>
-          </div>
-      </div>
-
-      <div style={styles.container}>
-        <div style={styles.left}>
-          {cart.map((item, i) => (
-            <div key={i} style={styles.item}>
-              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                <h3 style={{margin: 0}}>{item.nome} {item.variacao && <small style={{color: '#666'}}>({item.variacao})</small>}</h3>
-                {item.nome.toLowerCase().includes("digital") && <span style={styles.tagDigital}>DIGITAL</span>}
-              </div>
-              <p style={{fontWeight: 'bold', margin: '5px 0'}}>R$ {Number(item.preco).toFixed(2).replace(".", ",")}</p>
-              <div style={styles.qtyBox}>
-                <button onClick={() => decrease(item.id, item.variacao)} style={styles.qtyBtn}>-</button>
-                <span style={{fontWeight: 'bold'}}>{item.qty}</span>
-                <button onClick={() => addToCart(item)} style={styles.qtyBtn}>+</button>
-                <button onClick={() => removeFromCart(item.id, item.variacao)} style={styles.removeBtn}>remover</button>
-              </div>
+    <div style={{ minHeight: '100vh', backgroundColor: config.corFundoSite, fontFamily: 'sans-serif', overflowX: 'hidden' }}>
+      <header style={headerStyles.headerContainer}>
+        <div style={{ backgroundColor: config.corDestaque, height: '60px', width: '100%' }}></div>
+        <div style={{ backgroundColor: config.corSecundaria, height: '55px', width: '100%', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}></div>
+        <div style={headerStyles.headerContent}>
+          <div style={headerStyles.leftGroup}>
+            <button onClick={() => router.back()} style={headerStyles.btnBack}><ChevronLeft size={32} color="white" strokeWidth={3} /></button>
+            <div style={headerStyles.logoBox} onClick={() => router.push("/" + lojistaSlug)}>
+              <div style={headerStyles.logoWrapper}>{dadosLoja?.logoUrl && <img src={dadosLoja.logoUrl} style={styles.logoImg} alt="Logo" />}</div>
+              <span style={headerStyles.nomeLojaText}>{(dadosLoja?.nomeLoja || lojistaSlug || "").toUpperCase()}</span>
             </div>
-          ))}
-
-          <div style={styles.section}>
-              <h3 style={{marginTop: 0}}>👤 Seus Dados</h3>
-              <input placeholder="Nome Completo *" value={nomeCliente} onChange={(e) => setNomeCliente(e.target.value)} style={styles.input} />
-              <input placeholder="CPF (Somente números) *" value={cpf} onChange={(e) => setCpf(e.target.value.replace(/\D/g, ""))} maxLength={11} style={styles.input} />
-              
-              {temKitFesta && (
-                <div style={styles.kitFestaBox}>
-                  <p style={{margin: '0 0 10px 0', fontWeight: 'bold', color: '#b45309'}}>🎨 Personalização Kit Festa:</p>
-                  <div style={{display: 'flex', gap: 10}}>
-                     <input placeholder="Nome da criança *" value={nomeCrianca} onChange={(e) => setNomeCrianca(e.target.value)} style={styles.input} />
-                     <input placeholder="Idade *" value={idadeCrianca} onChange={(e) => setIdadeCrianca(e.target.value)} style={{...styles.input, width: '100px'}} />
-                  </div>
-                </div>
-              )}
-
-              {!isCarrinhoApenasDigital && (
-                <div style={{marginTop: 20}}>
-                  <h3 style={{marginBottom: 10}}>📍 Endereço de Entrega</h3>
-                  <input placeholder="CEP *" value={cep} onChange={(e) => setCep(e.target.value.replace(/\D/g, ""))} maxLength={8} style={styles.input} />
-                  <div style={{display: 'flex', gap: 10}}>
-                    <input placeholder="Rua *" value={rua} onChange={(e) => setRua(e.target.value)} style={{...styles.input, flex: 3}} />
-                    <input placeholder="Nº *" value={numero} onChange={(e) => setNumero(e.target.value)} style={{...styles.input, flex: 1}} />
-                  </div>
-                  <div style={{display: 'flex', gap: 10}}>
-                     <input placeholder="Cidade" value={cidade} readOnly style={{...styles.input, flex: 3, background: '#f9f9f9'}} />
-                     <input placeholder="UF" value={uf} readOnly style={{...styles.input, flex: 1, background: '#f9f9f9'}} />
-                  </div>
-                </div>
-              )}
           </div>
         </div>
-
-        <div style={styles.right}>
-          <h3 style={{marginTop: 0}}>💳 Pagamento PIX</h3>
-          {pixPayload ? (
-            <div style={styles.qrBox}>
-              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(pixPayload)}`} style={styles.qr} alt="Pix" />
-              <button style={styles.copyBtn} onClick={() => { navigator.clipboard.writeText(pixPayload); alert("Código PIX copiado!"); }}>Copiar Código PIX</button>
-            </div>
-          ) : <p style={{fontSize: '12px', color: '#999'}}>Aguardando dados...</p>}
-
-          {/* Caixa de Cupom */}
-          <div style={styles.couponBox}>
-             <input 
-               placeholder="Cupom de desconto" 
-               value={cupomInput} 
-               onChange={(e) => setCupomInput(e.target.value)} 
-               style={styles.couponInput} 
-             />
-             <button onClick={aplicarCupom} style={styles.couponBtn}>Aplicar</button>
+      </header>
+      <main style={{ padding: '0 10px 100px', marginTop: '140px', boxSizing: 'border-box' }}>
+        {dadosLoja?.freteGratisAtivo && safeCart.length > 0 && temFrete && (
+          <div style={{ maxWidth: '1100px', margin: '0 auto 20px', padding: '15px', borderRadius: '15px', backgroundColor: freteGratisConfig.atingido ? '#e6f4ea' : '#fff8e1', border: `1px solid ${freteGratisConfig.atingido ? '#34a853' : '#fbbc05'}`, display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center', boxSizing: 'border-box' }}>
+            <Gift size={22} color={freteGratisConfig.atingido ? '#34a853' : '#fbbc05'} />
+            <span style={{ fontSize: '14px', fontWeight: 'bold', color: freteGratisConfig.atingido ? '#137333' : '#b06000', textAlign: 'center' }}>
+              {freteGratisConfig.atingido ? "🎉 Parabéns! Você atingiu o valor mínimo e ganhou FRETE GRÁTIS!" : `🛒 Faltam apenas R$ ${freteGratisConfig.falta.toFixed(2).replace('.', ',')} para você ganhar Frete Grátis!`}
+            </span>
           </div>
-
-          <div style={styles.freteContainerRight}>
-            <h4 style={{margin: '0 0 10px 0'}}>🚚 Opções de Frete</h4>
-            {isCarrinhoApenasDigital ? (
-              <div style={{...styles.freteCard, borderColor: '#2ecc71', background: '#f0fdf4'}}>
-                <span style={{fontSize: '12px', fontWeight: 'bold'}}>ENVIO DIGITAL</span><br/>
-                <b style={{color: '#2ecc71'}}>Grátis</b>
-              </div>
-            ) : cep.length < 8 ? (
-              <p style={{fontSize: '12px', color: '#666'}}>Informe o CEP para ver o frete</p>
-            ) : calculandoFrete ? (
-              <p style={{fontSize: '12px'}}>🔄 Calculando...</p>
-            ) : (
-              <div style={{display: 'flex', flexDirection: 'column', gap: 10}}>
-                {opcoesFrete.length > 0 ? opcoesFrete.map(opt => (
-                  <div key={opt.id} onClick={() => setFreteSelecionado(opt)} 
-                       style={{
-                         ...styles.freteCard, 
-                         borderColor: freteSelecionado?.id === opt.id ? '#2ecc71' : '#ddd', 
-                         background: freteSelecionado?.id === opt.id ? '#f0fdf4' : '#fff'
-                       }}>
-                    <div style={{fontSize: '11px', fontWeight: 'bold'}}>{opt.name}</div>
-                    <div style={{color: opt.price === 0 ? '#2ecc71' : '#333', fontSize: '14px', fontWeight: 'bold'}}>
-                      {opt.price === 0 ? "Grátis" : `R$ ${Number(opt.price).toFixed(2).replace(".", ",")}`}
+        )}
+        <h2 style={{ color: config.corTexto, textAlign: 'center', marginBottom: 20, fontSize: '1.4rem' }}>MEU CARRINHO</h2>
+        <div style={styles.grid}>
+          <div style={styles.mainColumn}>
+            <div style={styles.card}>
+              <h4 style={{ color: config.corTexto, margin: '0 0 15px 0' }}>ITENS NO CARRINHO</h4>
+              {safeCart.length > 0 ? (
+                safeCart.map((item: any, index: number) => {
+                  const key = item.cartItemKey || `item_${index}`;
+                  const partes = item.variacao ? item.variacao.split("/") : [];
+                  const requisitosAtivos = item.requisitos || requisitosDoBanco[item.id];
+                  const possuiRequisitosValidos = verificarRequisitosValidos(requisitosAtivos);
+                  const isDigital = isItemDigital(item);
+                  return (
+                    <div key={key} style={styles.itemRow}>
+                      <div style={{ width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden', marginRight: '12px', flexShrink: 0, backgroundColor: '#f8fafc', border: '1px solid #f1f5f9' }}>
+                        {(item.foto || item.imagem || item.url) ? <img src={item.foto || item.imagem || item.url} alt={item.nome} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>📦</div>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <b style={{ color: config.corTexto, fontSize: '14px', wordBreak: 'break-word' }}>{item.nome || item.title}</b>
+                          {isDigital && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#e0f2fe', color: '#0369a1' }}>Digital</span>}
+                        </div>
+                        <span style={{ color: config.corTexto, fontSize: '14px' }}>R$ {Number(item.preco || item.price || 0).toFixed(2).replace('.', ',')}</span>
+                        {item.variacao && item.variacao !== "Padrão" && (
+                          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            {item.nomeVar1 && partes && partes[0] && <p style={styles.varText}><b>{item.nomeVar1}:</b> {partes[0].trim()}</p>}
+                            {item.nomeVar2 && partes && partes[1] && <p style={styles.varText}><b>{item.nomeVar2}:</b> {partes[1].trim()}</p>}
+                          </div>
+                        )}
+                        {possuiRequisitosValidos && <CamposPersonalizacao itemKey={key} requisitosAtivos={requisitosAtivos} personalizacoes={personalizacoes} corTexto={config.corTexto} onUpdateField={atualizarSubCampoPersonalizacao} />}
+                      </div>
+                      <div style={styles.controls}>
+                        <button onClick={() => setItemQty(key, Math.max(1, Number(item.qty || 1) - 1))} style={styles.qtyBtn}><Minus size={14} /></button>
+                        <span style={{ fontWeight: 'bold', minWidth: 20, textAlign: 'center' }}>{item.qty || 1}</span>
+                        <button onClick={() => setItemQty(key, Number(item.qty || 1) + 1)} style={styles.qtyBtn}><Plus size={14} /></button>
+                        <button onClick={() => removeFromCart(key)} style={styles.btnDel}><Trash2 size={18} /></button>
+                      </div>
                     </div>
+                  );
+                })
+              ) : ( <p style={{ textAlign: 'center', color: '#aaa', padding: '20px 0' }}>Seu carrinho está vazio.</p> )}
+            </div>
+            <div style={styles.card}>
+              <h4 style={{ color: config.corTexto, margin: '0 0 15px 0' }}>DADOS DO CLIENTE</h4>
+              <input 
+  placeholder="Nome Completo *" 
+  style={styles.input} 
+  value={cliente.nome || ""} 
+  onChange={e => setCliente({ ...cliente, nome: e.target.value })} 
+/>
+
+<input 
+  placeholder="WhatsApp (com DDD) *" 
+  style={styles.input} 
+  value={cliente.dsTelefone || ""} 
+  onChange={e => {
+    const valor = e.target.value.replace(/\D/g, "").replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+    const novoCliente = { ...cliente, dsTelefone: valor };
+    setCliente(novoCliente);
+    localStorage.setItem(`cliente_${lojistaSlug}`, JSON.stringify(novoCliente)); // Grava na hora
+  }}
+/>
+
+<input 
+  placeholder="CPF *" 
+  style={styles.input} 
+  value={cliente.cpf || ""} 
+  onChange={e => setCliente({ ...cliente, cpf: aplicarMascaraCPF(e.target.value) })} 
+/>
+              {!cpfValido && <p style={{ color: '#ff4d4d', fontSize: '12px', marginTop: '-5px', marginBottom: '10px', fontWeight: 'bold' }}>⚠️ Número de CPF inválido</p>}
+              {temFrete ? (
+                <>
+                  <h4 style={{ color: config.corTexto, margin: '15px 0 10px 0' }}>ENDEREÇO DE ENTREGA</h4>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <input placeholder="CEP *" style={{ ...styles.input, flex: 1 }} value={cliente.cep} onChange={e => setCliente({ ...cliente, cep: aplicarMascaraCEP(e.target.value) })} />
+                    <input placeholder="Nº *" style={{ ...styles.input, width: '70px' }} value={endereco.numero} onChange={e => setEndereco({ ...endereco, numero: e.target.value.replace(/\D/g, "") })} />
                   </div>
-                )) : <p style={{fontSize: '11px', color: '#e74c3c'}}>Opções indisponíveis.</p>}
-              </div>
-            )}
-          </div>
-
-          <div style={styles.resumoFinal}>
-            <div style={styles.resumoRow}><span>Subtotal:</span> <b>R$ {subtotal.toFixed(2)}</b></div>
-            {descontoAtivo > 0 && (
-              <div style={{...styles.resumoRow, color: '#e74c3c'}}>
-                <span>Desconto ({cupomAplicado}):</span> <b>- R$ {descontoAtivo.toFixed(2)}</b>
-              </div>
-            )}
-            <div style={styles.resumoRow}><span>Frete:</span> <b>{valorFreteFinal === 0 ? "Grátis" : `R$ ${valorFreteFinal.toFixed(2)}`}</b></div>
-            <div style={{...styles.resumoRow, fontSize: '20px', marginTop: 15, borderTop: '2px solid #eee', paddingTop: 10}}>
-              <span>TOTAL:</span> <b style={{color: '#2ecc71'}}>R$ {totalGeral.toFixed(2).replace(".", ",")}</b>
+                  <input placeholder="Complemento / Ponto de referência" style={styles.input} value={endereco.complemento || ""} onChange={e => setEndereco({ ...endereco, complemento: e.target.value })} />
+                  <input placeholder="Rua / Avenida" value={endereco.rua} style={styles.input} readOnly />
+                  <input placeholder="Bairro" value={endereco.bairro} style={styles.input} readOnly />
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <input placeholder="Cidade" value={endereco.cidade} style={{ ...styles.input, flex: 2 }} readOnly />
+                    <input placeholder="UF" value={endereco.uf} style={{ ...styles.input, flex: 1 }} readOnly />
+                  </div>
+                  {loadingFrete && <p style={{ fontSize: 13, color: '#999', textAlign: 'center' }}>Calculando formas de entrega...</p>}
+                  <div style={styles.freteGrid}>
+                    {opcoesFrete.map(f => (
+                      <button key={f.id} type="button" onClick={() => { setFreteSel(f); if(f.id !== "frete_gratis_ativado") setFreteBackup(f); }} style={{ ...styles.freteCard, borderColor: freteSel?.id === f.id ? config.corDestaque : '#eee', background: freteSel?.id === f.id ? config.corSecundaria : '#fff', color: config.corTexto }}>
+                        <small style={{ display: 'block', fontSize: '10px' }}>{f.name}</small>
+                        <b style={{ display: 'block', fontSize: '12px' }}>{f.price === 0 ? "Grátis" : "R$ " + Number(f.price).toFixed(2).replace('.', ',')}</b>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : safeCart.length > 0 && (
+                <div style={{ padding: '15px', marginTop: '10px', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0', color: '#166534', textAlign: 'center' }}>
+                  <Mail size={24} style={{ margin: '0 auto 8px', display: 'block' }} />
+                  <p style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>Este é um pedido 100% digital!</p>
+                  <p style={{ margin: '5px 0 0', fontSize: '12px' }}>O envio será feito via e-mail após a confirmação do pagamento.</p>
+                </div>
+              )}
             </div>
           </div>
-          
-          {erro && <div style={styles.errorBox}>{erro}</div>}
-
-          {!pedidoEnviado ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button onClick={enviarWhatsApp} disabled={!dadosLoja.aberta || carregando} 
-                      style={{...styles.whatsBtn, background: dadosLoja.aberta ? "#25D366" : "#ccc"}}>
-                {carregando ? "Processando..." : "1. Enviar Pedido no WhatsApp"}
-              </button>
-              
-              <button onClick={() => router.push(`/${lojistaId}`)} style={styles.continueBtn}>
-                ← Continuar Comprando
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={styles.successAlert}>
-                ✅ Pedido enviado! Agora escaneie o QR Code acima para pagar.
+          <div style={summaryColumnStyle}>
+            <div style={styles.card}>
+              <h3 style={{ color: config.corTexto, textAlign: 'center', margin: '0 0 15px 0' }}>RESUMO DO PEDIDO</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: '15px', fontSize: '14px' }}>
+                <div style={styles.rowBetween}><span style={{ color: '#64748b' }}>Total dos Produtos:</span><span style={{ fontWeight: '500', color: '#1e293b' }}>R$ {valorSubtotalProdutos.toFixed(2).replace('.', ',')}</span></div>
+                {valorDesconto > 0 && ( <div style={styles.rowBetween}><span style={{ color: '#2ecc71' }}>Cupom de Desconto:</span><span style={{ color: '#2ecc71', fontWeight: '500' }}>- R$ {valorDesconto.toFixed(2).replace('.', ',')}</span></div> )}
+                <div style={styles.rowBetween}><span style={{ color: '#64748b' }}>Sub total:</span><span style={{ fontWeight: '500', color: '#1e293b' }}>R$ {valorSubTotalComDesconto.toFixed(2).replace('.', ',')}</span></div>
+                {temFrete && (
+                  <div style={styles.rowBetween}>
+                    <span style={{ color: '#64748b' }}>Total de Frete:</span>
+                    <span style={{ fontWeight: '500', color: '#1e293b' }}>{freteGratisConfig.ativo && freteGratisConfig.atingido ? "Grátis" : freteSel ? (freteSel.price === 0 ? "Grátis" : "R$ " + Number(freteSel.price).toFixed(2).replace('.', ',')) : "R$ 0,00"}</span>
+                  </div>
+                )}
               </div>
-
-              <button onClick={() => router.push(`/${lojistaId}`)} style={styles.continueBtn}>
-                ← Continuar Comprando
+              <hr style={{ border: 'none', borderTop: '2px solid #f6f9fc', margin: '10px 0' }} />
+              <div style={styles.rowBetween}><span style={{ fontWeight: 'bold', fontSize: '16px', color: config.corTexto }}>Pagamento total:</span><span style={{ fontWeight: 'bold', fontSize: '18px', color: config.corTexto }}>R$ {totalGeral.toFixed(2).replace('.', ',')}</span></div>
+              <div style={{ padding: '15px 0', borderTop: '1px solid #f1f5f9' }}>
+                <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '5px' }}>Possui cupom?</p>
+                <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+                  <input placeholder="Digite aqui" value={cupomDigitado} onChange={e => setCupomDigitado(e.target.value)} style={{ ...styles.input, marginBottom: 0, fontSize: 12, flex: 1 }} />
+                  {descontoAtivo.valor > 0 && ( <button onClick={limparCupom} style={{ background: '#ff4d4d', color: '#fff', border: 'none', borderRadius: 8, padding: '0 10px', cursor: 'pointer' }}><X size={16}/></button> )}
+                </div>
+                <button onClick={aplicarCupom} style={{ width: '100%', background: config.corTexto, color: 'white', border: 'none', borderRadius: 8, padding: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: 11 }}>APLICAR CUPOM</button>
+              </div>
+              <div style={{ marginTop: '15px' }}>
+                {temCheckoutOnlineAtivo() ? (
+                  <div style={{ ...styles.pixBox, borderColor: '#2ecc71', backgroundColor: '#f4fbf7' }}>
+                    <p style={{ margin: 0, fontSize: '13px', fontWeight: 'bold', color: '#27ae60', textAlign: 'center' }}>Checkout Online Ativo</p>
+                  </div>
+                ) : (
+                  qrCodeUrl ? (
+                    <div style={styles.pixBox}>
+                      <img src={qrCodeUrl} alt="PIX" style={{ width: 150, height: 150 }} />
+                      <button onClick={() => { navigator.clipboard.writeText(dadosLoja?.chavePix || dadosLoja?.pix || ""); alert("Copiado!"); }} style={{ ...styles.btnAction, backgroundColor: '#3498db', fontSize: 11, padding: '10px', color: '#fff', marginTop: 0 }}>COPIAR PIX</button>
+                    </div>
+                  ) : <div style={{ padding: '10px', textAlign: 'center', fontSize: '12px', color: '#666' }}>Pagamento via PIX</div>
+                )}
+              </div>
+              <button 
+                onClick={finalizarNoWhatsApp} 
+                disabled={!podeFinalizar} 
+                style={{ 
+                  ...styles.btnAction, 
+                  backgroundColor: dadosLoja?.lojaAberta === false ? '#94a3b8' : (podeFinalizar ? '#25D366' : '#ccc'), 
+                  color: podeFinalizar ? '#fff' : '#666', 
+                  cursor: podeFinalizar ? 'pointer' : 'not-allowed' 
+                }}
+              >
+                {dadosLoja?.lojaAberta === false ? 'PEDIDOS BLOQUEADOS (MODO VITRINE)' : (podeFinalizar ? (temCheckoutOnlineAtivo() ? 'FINALIZAR PAGAMENTO' : 'FINALIZAR NO WHATSAPP') : 'PREENCHA OS DADOS')}
               </button>
-
-              <button onClick={() => { clearCart(); router.push("/obrigado"); }} style={{...styles.whatsBtn, background: "#3498db"}}>
-                2. Já paguei o PIX e quero finalizar
-              </button>
-              
-              <button onClick={() => setPedidoEnviado(false)} style={styles.backBtn}>
-                Alterar dados do pedido
-              </button>
+              <button 
+  onClick={limparTudo} 
+  style={{
+    ...styles.btnClean,
+    padding: '10px',
+    border: '1px solid #f70808',
+    borderRadius: '8px',
+    marginTop: '20px'
+  }}
+>
+  &times; LIMPAR CARRINHO E DADOS
+</button>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
 
-const styles = {
-  page: { background: "#f5f7fb", minHeight: "100vh", fontFamily: "sans-serif" },
-  bannerContainer: { width: '100%', height: '180px', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' },
-  bannerOverlay: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', padding: '0 40px' },
-  container: { display: "flex", gap: 20, flexWrap: "wrap", padding: '20px', maxWidth: '1200px', margin: '0 auto' },
-  left: { flex: 2, minWidth: 320 },
-  right: { flex: 1, minWidth: 300, background: "#fff", padding: 20, borderRadius: 12, height: 'fit-content', boxShadow: "0 4px 15px rgba(0,0,0,0.08)", position: 'sticky', top: 20 },
-  section: { background: '#fff', padding: 20, borderRadius: 10, boxShadow: "0 2px 5px rgba(0,0,0,0.05)" },
-  item: { background: "#fff", padding: 15, borderRadius: 10, marginBottom: 10, border: '1px solid #eee' },
-  qtyBox: { display: "flex", alignItems: "center", gap: 10 },
-  qtyBtn: { width: 32, height: 32, background: "#2ecc71", color: "#fff", border: "none", borderRadius: 6, cursor: 'pointer', fontSize: '18px' },
-  removeBtn: { background: "#ff4d4d", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: 'pointer', fontSize: '11px', marginLeft: 'auto' },
-  input: { width: "100%", padding: 12, marginTop: 8, borderRadius: 8, border: "1px solid #ddd", boxSizing: 'border-box' },
-  couponBox: { display: 'flex', gap: 5, marginBottom: 15 },
-  couponInput: { flex: 1, padding: 10, borderRadius: 6, border: '1px solid #ddd' },
-  couponBtn: { padding: '10px 15px', background: '#333', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold' },
-  kitFestaBox: { marginTop: 15, padding: 15, background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a' },
-  freteContainerRight: { marginTop: 10, padding: 15, background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', textAlign: 'center' },
-  freteCard: { padding: 10, border: '2px solid', borderRadius: 8, cursor: 'pointer', textAlign: 'center' },
-  qrBox: { background: '#f9f9f9', padding: 15, borderRadius: 10, marginBottom: 15, textAlign: 'center' },
-  qr: { width: 140, height: 140, display: 'block', margin: '0 auto 10px' },
-  copyBtn: { width: "100%", padding: 10, background: "#fff", border: "1px solid #ccc", borderRadius: 6, cursor: 'pointer', fontSize: '12px' },
-  resumoFinal: { margin: '20px 0' },
-  resumoRow: { display: 'flex', justifyContent: 'space-between', marginBottom: 5 },
-  whatsBtn: { width: "100%", padding: 16, color: "#fff", border: "none", borderRadius: 10, fontWeight: "bold", cursor: 'pointer', fontSize: '16px' },
-  continueBtn: { width: "100%", background: "#fff", color: "#3498db", border: "2px solid #3498db", padding: "14px", borderRadius: 10, cursor: 'pointer', fontWeight: 'bold' },
-  errorBox: { background: '#fee2e2', color: '#b91c1c', padding: 12, borderRadius: 8, marginBottom: 15, fontSize: '14px', textAlign: 'center' },
-  successAlert: { background: '#f0fdf4', color: '#166534', padding: '10px', borderRadius: '8px', fontSize: '13px', textAlign: 'center', border: '1px solid #bbf7d0' },
-  backBtn: { background: 'none', border: 'none', color: '#999', fontSize: '12px', cursor: 'pointer', textAlign: 'center' },
-  tagDigital: { background: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold' }
+const summaryColumnStyle: React.CSSProperties = { flex: '1 1 300px', width: '100%', boxSizing: 'border-box' };
+
+const headerStyles: Record<string, React.CSSProperties> = {
+  headerContainer: { position: 'fixed', top: 0, left: 0, width: '100%', height: '115px', zIndex: 1000 },
+  headerContent: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', boxSizing: 'border-box' },
+  leftGroup: { display: 'flex', alignItems: 'center', gap: '10px', width: '100%' },
+  btnBack: { background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 },
+  logoBox: { display: 'flex', alignItems: 'center', gap: '15px', cursor: 'pointer', overflow: 'hidden', maxWidth: 'calc(100% - 50px)' },
+  logoWrapper: { width: '45px', height: '45px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', overflow: 'hidden', background: '#fff', flexShrink: 0 },
+  nomeLojaText: { fontSize: '20px', color: 'white', fontWeight: '900', textShadow: '2px 2px 4px rgba(0,0,0,0.3)', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+};
+
+const styles: Record<string, React.CSSProperties> = {
+  grid: { display: 'flex', gap: 20, flexWrap: 'wrap', width: '100%', boxSizing: 'border-box' },
+  mainColumn: { flex: '2 1 600px', width: '100%', boxSizing: 'border-box' },
+  card: { background: '#fff', borderRadius: 15, padding: 15, marginBottom: 15, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', boxSizing: 'border-box', width: '100%' },
+  itemRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #f5f5f5', gap: 10, width: '100%', boxSizing: 'border-box' },
+  varText: { margin: '2px 0 0', fontSize: 13, color: '#475569', fontWeight: '400' },
+  controls: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
+  qtyBtn: { background: '#eee', border: 'none', borderRadius: 5, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '26px' },
+  btnDel: { background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: 0 },
+  input: { width: '100%', padding: 12, marginBottom: 10, borderRadius: 8, border: '1px solid #eee', outline: 'none', boxSizing: 'border-box', fontSize: '14px' },
+  freteGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, width: '100%' },
+  freteCard: { padding: 8, border: '2px solid', borderRadius: 10, cursor: 'pointer', textAlign: 'center', boxSizing: 'border-box' },
+  rowBetween: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
+  pixBox: { marginTop: 15, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '15px', border: '1px dashed #3498db', borderRadius: '10px', width: '100%', boxSizing: 'border-box' },
+  btnAction: { width: '100%', padding: 15, border: 'none', borderRadius: 10, fontWeight: 'bold', marginTop: 10, cursor: 'pointer', boxSizing: 'border-box', transition: '0.2s' },
+  btnClean: { background: 'none', border: 'none', color: '#999', fontSize: 11, marginTop: 15, cursor: 'pointer', width: '100%', textAlign: 'center' },
+  logoImg: { width: '100%', height: '100%', objectFit: 'contain' }
 };
