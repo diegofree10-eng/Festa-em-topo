@@ -1,5 +1,6 @@
 "use client";
 
+import { Produto } from '@/types';
 import { useCart } from "@/app/context/CartContext";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
@@ -9,77 +10,102 @@ import { ChevronLeft, Trash2, Plus, Minus, X, Gift, Mail } from "lucide-react";
 import CamposPersonalizacao from "../_components/CamposPersonalizacao";
 import { executarFluxoPedido } from "../_components/helperPedido";
 
+interface DadosLoja {
+  nomeLoja: string;
+  logoUrl?: string;
+  whatsapp?: string;
+  freteGratisAtivo?: boolean;
+  valorMinimoFreteGratis?: string;
+  transportadoras?: any;
+  cidade?: string;
+  tema?: any;
+  lojaAberta?: boolean;
+  chavePix?: string;
+  pix?: string;
+  cupons?: any;
+  plano?: string;
+  mercadoPago?: { ativo?: boolean; sandbox?: boolean };
+  pagseguro?: { ativo?: boolean; sandbox?: boolean };
+  cep?: string;
+  CEP?: string;
+}
+
 export default function CarrinhoIdentidadeVisual() {
-  const { cart, setItemQty, removeFromCart, clearCart } = useCart();
+  const { cart, setItemQty, removeFromCart, clearCart } = useCart() as {
+    cart: Produto[];
+    setItemQty: (key: string, qty: number) => void;
+    removeFromCart: (key: string) => void;
+    clearCart: () => void;
+  };
   const router = useRouter();
   const params = useParams();
-  
+
   const lojistaSlug = (params?.lojista as string) || (params?.slug as string) || "";
 
-  const isItemDigital = useCallback((item: any) => 
-    item.precisaFrete === false && 
-    item.envioTransportadora === false && 
+  const isItemDigital = useCallback((item: any) =>
+    item.precisaFrete === false &&
+    item.envioTransportadora === false &&
     item.permiteRetirada === false, []);
 
-  const [dadosLoja, setDadosLoja] = useState<any>(null);
+  const [dadosLoja, setDadosLoja] = useState<DadosLoja | null>(null);
   const [lojistaId, setLojistaId] = useState<string | null>(null);
   const [cupomDigitado, setCupomDigitado] = useState("");
   const [descontoAtivo, setDescontoAtivo] = useState({ valor: 0, tipo: "" });
   const [requisitosDoBanco, setRequisitosDoBanco] = useState<Record<string, any>>({});
 
-  const safeCart = useMemo(() => Array.isArray(cart) ? cart : [], [cart]);
+  const safeCart: Produto[] = useMemo(() => Array.isArray(cart) ? cart : [], [cart]);
   const temFrete = useMemo(() => safeCart.some(item => !isItemDigital(item)), [safeCart, isItemDigital]);
 
-const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone: "" });
+  const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone: "" });
   const [endereco, setEndereco] = useState({ rua: "", numero: "", bairro: "", cidade: "", uf: "", complemento: "" });
   const [personalizacoes, setPersonalizacoes] = useState<Record<string, Record<string, string>>>({});
 
   useEffect(() => {
-  if (typeof window !== "undefined" && lojistaSlug) {
-    const c = localStorage.getItem(`cliente_${lojistaSlug}`);
-    const e = localStorage.getItem(`end_${lojistaSlug}`);
-    const p = localStorage.getItem(`pers_${lojistaSlug}`);
+    if (typeof window !== "undefined" && lojistaSlug) {
+      const c = localStorage.getItem(`cliente_${lojistaSlug}`);
+      const e = localStorage.getItem(`end_${lojistaSlug}`);
+      const p = localStorage.getItem(`pers_${lojistaSlug}`);
 
-    if (c) {
-      try {
-        const parsed = JSON.parse(c);
-        setCliente({
-          nome: parsed.nome || "",
-          cpf: parsed.cpf || "",
-          cep: parsed.cep || "",
-          dsTelefone: parsed.dsTelefone || ""
-        });
-      } catch (err) {
-        console.error("Erro ao parsear cliente", err);
+      if (c) {
+        try {
+          const parsed = JSON.parse(c);
+          setCliente({
+            nome: parsed.nome || "",
+            cpf: parsed.cpf || "",
+            cep: parsed.cep || "",
+            dsTelefone: parsed.dsTelefone || ""
+          });
+        } catch (err) {
+          console.error("Erro ao parsear cliente", err);
+        }
+      }
+
+      if (e) {
+        try {
+          const parsed = JSON.parse(e);
+          setEndereco({
+            rua: parsed.rua || "",
+            numero: parsed.numero || "",
+            bairro: parsed.bairro || "",
+            cidade: parsed.cidade || "",
+            uf: parsed.uf || "",
+            complemento: parsed.complemento || ""
+          });
+        } catch (err) {
+          console.error("Erro ao parsear endereço", err);
+        }
+      }
+
+      if (p) {
+        try {
+          setPersonalizacoes(JSON.parse(p));
+        } catch (err) {
+          console.error("Erro ao parsear personalizacoes", err);
+        }
       }
     }
+  }, [lojistaSlug]);
 
-    if (e) {
-      try {
-        const parsed = JSON.parse(e);
-        setEndereco({
-          rua: parsed.rua || "",
-          numero: parsed.numero || "",
-          bairro: parsed.bairro || "",
-          cidade: parsed.cidade || "",
-          uf: parsed.uf || "",
-          complemento: parsed.complemento || ""
-        });
-      } catch (err) {
-        console.error("Erro ao parsear endereço", err);
-      }
-    }
-
-    if (p) {
-      try {
-        setPersonalizacoes(JSON.parse(p));
-      } catch (err) {
-        console.error("Erro ao parsear personalizacoes", err);
-      }
-    }
-  }
-}, [lojistaSlug]);
-  
   const [opcoesFrete, setOpcoesFrete] = useState<any[]>([]);
   const [freteSel, setFreteSel] = useState<any>(null);
   const [loadingFrete, setLoadingFrete] = useState(false);
@@ -114,7 +140,7 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
   const cpfValido = useMemo(() => {
     if (!cliente.cpf) return true;
     const limpo = cliente.cpf.replace(/\D/g, "");
-    if (limpo.length < 11) return true; 
+    if (limpo.length < 11) return true;
     return validarCPFReal(cliente.cpf);
   }, [cliente.cpf]);
 
@@ -150,43 +176,43 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
     }
 
     // 2. Se a lista de fretes da API chegou
-// 2. Se a lista de fretes da API chegou
-  if (listaFreteCache.length > 0) {
-    const freteGratisAtivo = !!dadosLoja?.freteGratisAtivo;
-    const atingiuGratis = freteGratisConfig.atingido;
-    
-    // Sempre filtra as transportadoras permitidas pelo lojista
-    const transportadorasAtivas = dadosLoja?.transportadoras || {};
-    const listaFiltrada = listaFreteCache.filter((f: any) => {
-      const idLower = String(f.id).toLowerCase();
-      if (idLower.includes("correios") || idLower.includes("pac") || idLower.includes("sedex")) return !!transportadorasAtivas.correios;
-      if (idLower.includes("azul")) return !!transportadorasAtivas.azul;
-      if (idLower.includes("jadlog")) return !!transportadorasAtivas.jadlog;
-      if (idLower.includes("latam")) return !!transportadorasAtivas.latam;
-      return true; 
-    });
+    // 2. Se a lista de fretes da API chegou
+    if (listaFreteCache.length > 0) {
+      const freteGratisAtivo = !!dadosLoja?.freteGratisAtivo;
+      const atingiuGratis = freteGratisConfig.atingido;
 
-    let listaFinal = [];
+      // Sempre filtra as transportadoras permitidas pelo lojista
+      const transportadorasAtivas = dadosLoja?.transportadoras || {};
+      const listaFiltrada = listaFreteCache.filter((f: any) => {
+        const idLower = String(f.id).toLowerCase();
+        if (idLower.includes("correios") || idLower.includes("pac") || idLower.includes("sedex")) return !!transportadorasAtivas.correios;
+        if (idLower.includes("azul")) return !!transportadorasAtivas.azul;
+        if (idLower.includes("jadlog")) return !!transportadorasAtivas.jadlog;
+        if (idLower.includes("latam")) return !!transportadorasAtivas.latam;
+        return true;
+      });
 
-    if (freteGratisAtivo && atingiuGratis) {
-      // REGRA: Atingiu o Frete Grátis -> Exibe APENAS a opção gratuita
-      const opcaoGratuita = { id: "frete_gratis_ativado", name: "Frete Grátis Promocional", price: 0 };
-      listaFinal = [opcaoGratuita];
-      
-      // Auto-seleciona o Frete Grátis
-      setFreteSel(opcaoGratuita);
-    } else {
-      // REGRA: Não atingiu -> Exibe as opções pagas filtradas
-      listaFinal = listaFiltrada;
-      
-      // Se não houver seleção ou a anterior era o grátis, seleciona a primeira da lista
-      if (!freteSel || freteSel.id === "frete_gratis_ativado") {
-        setFreteSel(listaFinal.length > 0 ? listaFinal[0] : null);
+      let listaFinal = [];
+
+      if (freteGratisAtivo && atingiuGratis) {
+        // REGRA: Atingiu o Frete Grátis -> Exibe APENAS a opção gratuita
+        const opcaoGratuita = { id: "frete_gratis_ativado", name: "Frete Grátis Promocional", price: 0 };
+        listaFinal = [opcaoGratuita];
+
+        // Auto-seleciona o Frete Grátis
+        setFreteSel(opcaoGratuita);
+      } else {
+        // REGRA: Não atingiu -> Exibe as opções pagas filtradas
+        listaFinal = listaFiltrada;
+
+        // Se não houver seleção ou a anterior era o grátis, seleciona a primeira da lista
+        if (!freteSel || freteSel.id === "frete_gratis_ativado") {
+          setFreteSel(listaFinal.length > 0 ? listaFinal[0] : null);
+        }
       }
-    }
 
-    setOpcoesFrete(listaFinal);
-  }
+      setOpcoesFrete(listaFinal);
+    }
   }, [
     listaFreteCache.length,
     freteGratisConfig.atingido,
@@ -204,18 +230,18 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
 
   const valorSubTotalComDesconto = useMemo(() => Math.max(0, valorSubtotalProdutos - valorDesconto), [valorSubtotalProdutos, valorDesconto]);
   const totalGeral = useMemo(() => {
-  if (!temFrete) return valorSubTotalComDesconto;
+    if (!temFrete) return valorSubTotalComDesconto;
 
-  // Se atingiu o frete grátis, o valor é 0, senão usa o preço selecionado
-  const valorDoFrete = (freteGratisConfig.atingido) ? 0 : Number(freteSel?.price || 0);
-  
-  return valorDoFrete + valorSubTotalComDesconto;
-}, [
-  valorSubTotalComDesconto, 
-  freteSel?.price, // <--- AQUI ESTÁ O SEGREDO: dependa do preço, não do objeto inteiro
-  temFrete, 
-  freteGratisConfig.atingido
-]);
+    // Se atingiu o frete grátis, o valor é 0, senão usa o preço selecionado
+    const valorDoFrete = (freteGratisConfig.atingido) ? 0 : Number(freteSel?.price || 0);
+
+    return valorDoFrete + valorSubTotalComDesconto;
+  }, [
+    valorSubTotalComDesconto,
+    freteSel?.price, // <--- AQUI ESTÁ O SEGREDO: dependa do preço, não do objeto inteiro
+    temFrete,
+    freteGratisConfig.atingido
+  ]);
   const verificarRequisitosValidos = (requisitosAtivos: any) => {
     if (!requisitosAtivos) return false;
     if (Array.isArray(requisitosAtivos)) return requisitosAtivos.some((r: any) => r && (r.label || r.id));
@@ -240,41 +266,41 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
   const temCheckoutOnlineAtivo = useCallback(() => lojistaAtivouEPlanoLiberou("mercado_pago") || lojistaAtivouEPlanoLiberou("pagseguro"), [lojistaAtivouEPlanoLiberou]);
 
   const podeFinalizar = useMemo(() => {
-  if (dadosLoja && dadosLoja.lojaAberta === false) return false;
-  
-  const validacaoEntrega = temFrete 
-    ? (cliente.cep.replace(/\D/g, "").length === 8 && endereco.numero.trim().length > 0 && freteSel !== null) 
-    : true;
+    if (dadosLoja && dadosLoja.lojaAberta === false) return false;
 
-  // Validação atualizada usando dsTelefone
-  const baseValid = 
-    cliente.nome.trim().length > 3 && 
-    validarCPFReal(cliente.cpf) && 
-    cliente.dsTelefone.replace(/\D/g, "").length >= 10 && 
-    validacaoEntrega && 
-    safeCart.length > 0;
+    const validacaoEntrega = temFrete
+      ? (cliente.cep.replace(/\D/g, "").length === 8 && endereco.numero.trim().length > 0 && freteSel !== null)
+      : true;
 
-  if (!baseValid) return false;
+    // Validação atualizada usando dsTelefone
+    const baseValid =
+      cliente.nome.trim().length > 3 &&
+      validarCPFReal(cliente.cpf) &&
+      cliente.dsTelefone.replace(/\D/g, "").length >= 10 &&
+      validacaoEntrega &&
+      safeCart.length > 0;
 
-  for (let i = 0; i < safeCart.length; i++) {
-    const item = safeCart[i];
-    const key = item.cartItemKey || `item_${i}`;
-    const requisitosAtivos = item.requisitos || requisitosDoBanco[item.id];
-    if (requisitosAtivos) {
-      const respostasItem = personalizacoes[key] || {};
-      if (Array.isArray(requisitosAtivos)) {
-        for (const req of requisitosAtivos) {
-          if (req?.obrigatorio && (!respostasItem[String(req.id)] || !respostasItem[String(req.id)].trim())) return false;
+    if (!baseValid) return false;
+
+    for (let i = 0; i < safeCart.length; i++) {
+      const item = safeCart[i];
+      const key = item.cartItemKey || `item_${i}`;
+      const requisitosAtivos = item.requisitos || requisitosDoBanco[item.id];
+      if (requisitosAtivos) {
+        const respostasItem = personalizacoes[key] || {};
+        if (Array.isArray(requisitosAtivos)) {
+          for (const req of requisitosAtivos) {
+            if (req?.obrigatorio && (!respostasItem[String(req.id)] || !respostasItem[String(req.id)].trim())) return false;
+          }
+        } else if (typeof requisitosAtivos === "object") {
+          if (requisitosAtivos.pedeNome && (!respostasItem.nome || !respostasItem.nome.trim())) return false;
+          if (requisitosAtivos.pedeIdade && (!respostasItem.idade || !respostasItem.idade.trim())) return false;
+          if (requisitosAtivos.pedeData && (!respostasItem.data || !respostasItem.data.trim())) return false;
         }
-      } else if (typeof requisitosAtivos === "object") {
-        if (requisitosAtivos.pedeNome && (!respostasItem.nome || !respostasItem.nome.trim())) return false;
-        if (requisitosAtivos.pedeIdade && (!respostasItem.idade || !respostasItem.idade.trim())) return false;
-        if (requisitosAtivos.pedeData && (!respostasItem.data || !respostasItem.data.trim())) return false;
       }
     }
-  }
-  return true;
-}, [cliente, endereco, freteSel, safeCart, personalizacoes, requisitosDoBanco, dadosLoja, temFrete]);
+    return true;
+  }, [cliente, endereco, freteSel, safeCart, personalizacoes, requisitosDoBanco, dadosLoja, temFrete]);
   useEffect(() => {
     async function carregarDono() {
       if (!lojistaSlug) return;
@@ -283,7 +309,7 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
           setLojistaId(querySnapshot.docs[0].id);
-          setDadosLoja(querySnapshot.docs[0].data());
+          setDadosLoja(querySnapshot.docs[0].data() as DadosLoja);
         }
       } catch (err) { console.error("Erro ao carregar dados da loja:", err); }
     }
@@ -335,119 +361,119 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
   const limparCupom = () => { setCupomDigitado(""); setDescontoAtivo({ valor: 0, tipo: "" }); };
 
   useEffect(() => {
-  const cepClienteLimpo = cliente.cep.replace(/\D/g, "");
+    const cepClienteLimpo = cliente.cep.replace(/\D/g, "");
 
-  // 1. Validação inicial e reset
-  if (safeCart.length === 0 || !temFrete || cepClienteLimpo.length !== 8 || !lojistaId) {
-    setOpcoesFrete([]);
-    setFreteSel(null);
-    setLoadingFrete(false);
-    return;
-  }
-
-  setLoadingFrete(true);
-
-  async function calcularTudo() {
-    try {
-      // Busca dados do CEP
-      const rVia = await fetch(`https://viacep.com.br/ws/${cepClienteLimpo}/json/`);
-      const dadosCliente = await rVia.json();
-      if (dadosCliente.erro) { throw new Error("CEP inválido"); }
-
-      // Atualiza endereço base
-      setEndereco(prev => ({ 
-        ...prev, 
-        rua: dadosCliente.logradouro || "", 
-        bairro: dadosCliente.bairro || "", 
-        cidade: dadosCliente.localidade || "", 
-        uf: dadosCliente.uf || "" 
-      }));
-
-      // Calcula frete na API
-      const rFrete = await fetch(`${window.location.origin}/api/frete/calcular`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          cepDestino: cepClienteLimpo, lojistaId, itensFiltrados: safeCart,
-          pacote: { peso: 0.5, altura: 10, largura: 20, comprimento: 20 } 
-        })
-      });
-      
-      const listaBruta = await rFrete.json();
-      let listaCalculada = Array.isArray(listaBruta) ? listaBruta.filter((f: any) => !f.error) : [];
-
-      // Lógica de Retirada na loja
-      const cidCli = dadosCliente.localidade?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const cidLoj = dadosLoja?.cidade?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      if (cidCli && cidLoj && cidCli === cidLoj) {
-        listaCalculada.unshift({ id: "retirar_loja", name: "Retirar na Loja", price: 0 });
-      }
-
-      // Filtragem de transportadoras
-      // ... (código anterior: busca cep, API de frete, retirada na loja)
-
-      // Filtragem de transportadoras
-      const permitidas = dadosLoja?.transportadoras || {};
-      let listaFiltrada = listaCalculada.filter((f: any) => {
-        const idLower = String(f.id).toLowerCase();
-        if (idLower.includes("correios") || idLower.includes("pac") || idLower.includes("sedex")) return !!permitidas.correios;
-        if (idLower.includes("azul")) return !!permitidas.azul;
-        if (idLower.includes("jadlog")) return !!permitidas.jadlog;
-        if (idLower.includes("latam")) return !!permitidas.latam;
-        return true;
-      });
-
-      // --- MUDANÇA AQUI: LÓGICA DE EXCLUSIVIDADE ---
-      let listaFinal = [];
-
-      if (freteGratisConfig.atingido) {
-        // SE ATINGIU: Exclui TUDO e mostra APENAS o Frete Grátis
-        const opcaoGratuita = { id: "frete_gratis_ativado", name: "Frete Grátis Promocional", price: 0 };
-        listaFinal = [opcaoGratuita];
-        setFreteSel(opcaoGratuita);
-      } else {
-        // SE NÃO ATINGIU: Mostra as pagas permitidas
-        listaFinal = listaFiltrada;
-        
-        if (listaFinal.length > 0) {
-          // PROCURA O FRETE JÁ SELECIONADO NA NOVA LISTA PARA PEGAR O PREÇO ATUALIZADO
-          const freteAtualizado = listaFinal.find(f => f.id === freteSel?.id);
-          
-          if (freteAtualizado) {
-            // Atualiza com o preço novo que a API acabou de calcular
-            setFreteSel(freteAtualizado);
-          } else {
-            // Se o frete antigo não existe mais na lista, seleciona o primeiro
-            setFreteSel(listaFinal[0]);
-          }
-        } else {
-          setFreteSel(null);
-        }
-      }
-
-      setOpcoesFrete(listaFinal);
+    // 1. Validação inicial e reset
+    if (safeCart.length === 0 || !temFrete || cepClienteLimpo.length !== 8 || !lojistaId) {
+      setOpcoesFrete([]);
+      setFreteSel(null);
       setLoadingFrete(false);
-      
-      
-    } catch (err) {
-      console.error("Erro na cotação:", err);
-      setLoadingFrete(false);
+      return;
     }
-  }
 
-  calcularTudo();
-}, [
-  cliente.cep || "",
-  lojistaId || "",
-  !!temFrete,
-  safeCart.map(i => `${i.id}-${i.qty}`).join('|'), 
-  dadosLoja?.cep || "",
-  dadosLoja?.CEP || "",
-  JSON.stringify(dadosLoja?.transportadoras || {}), 
-  dadosLoja?.cidade || "",
-  // Use um valor primitivo calculado aqui, em vez do objeto inteiro:
-  valorSubtotalProdutos >= (parseFloat(String(dadosLoja?.valorMinimoFreteGratis || "0").replace(/\./g, "").replace(",", ".")) || 0)
-]);
+    setLoadingFrete(true);
+
+    async function calcularTudo() {
+      try {
+        // Busca dados do CEP
+        const rVia = await fetch(`https://viacep.com.br/ws/${cepClienteLimpo}/json/`);
+        const dadosCliente = await rVia.json();
+        if (dadosCliente.erro) { throw new Error("CEP inválido"); }
+
+        // Atualiza endereço base
+        setEndereco(prev => ({
+          ...prev,
+          rua: dadosCliente.logradouro || "",
+          bairro: dadosCliente.bairro || "",
+          cidade: dadosCliente.localidade || "",
+          uf: dadosCliente.uf || ""
+        }));
+
+        // Calcula frete na API
+        const rFrete = await fetch(`${window.location.origin}/api/frete/calcular`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cepDestino: cepClienteLimpo, lojistaId, itensFiltrados: safeCart,
+            pacote: { peso: 0.5, altura: 10, largura: 20, comprimento: 20 }
+          })
+        });
+
+        const listaBruta = await rFrete.json();
+        let listaCalculada = Array.isArray(listaBruta) ? listaBruta.filter((f: any) => !f.error) : [];
+
+        // Lógica de Retirada na loja
+        const cidCli = dadosCliente.localidade?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const cidLoj = dadosLoja?.cidade?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (cidCli && cidLoj && cidCli === cidLoj) {
+          listaCalculada.unshift({ id: "retirar_loja", name: "Retirar na Loja", price: 0 });
+        }
+
+        // Filtragem de transportadoras
+        // ... (código anterior: busca cep, API de frete, retirada na loja)
+
+        // Filtragem de transportadoras
+        const permitidas = dadosLoja?.transportadoras || {};
+        let listaFiltrada = listaCalculada.filter((f: any) => {
+          const idLower = String(f.id).toLowerCase();
+          if (idLower.includes("correios") || idLower.includes("pac") || idLower.includes("sedex")) return !!permitidas.correios;
+          if (idLower.includes("azul")) return !!permitidas.azul;
+          if (idLower.includes("jadlog")) return !!permitidas.jadlog;
+          if (idLower.includes("latam")) return !!permitidas.latam;
+          return true;
+        });
+
+        // --- MUDANÇA AQUI: LÓGICA DE EXCLUSIVIDADE ---
+        let listaFinal = [];
+
+        if (freteGratisConfig.atingido) {
+          // SE ATINGIU: Exclui TUDO e mostra APENAS o Frete Grátis
+          const opcaoGratuita = { id: "frete_gratis_ativado", name: "Frete Grátis Promocional", price: 0 };
+          listaFinal = [opcaoGratuita];
+          setFreteSel(opcaoGratuita);
+        } else {
+          // SE NÃO ATINGIU: Mostra as pagas permitidas
+          listaFinal = listaFiltrada;
+
+          if (listaFinal.length > 0) {
+            // PROCURA O FRETE JÁ SELECIONADO NA NOVA LISTA PARA PEGAR O PREÇO ATUALIZADO
+            const freteAtualizado = listaFinal.find(f => f.id === freteSel?.id);
+
+            if (freteAtualizado) {
+              // Atualiza com o preço novo que a API acabou de calcular
+              setFreteSel(freteAtualizado);
+            } else {
+              // Se o frete antigo não existe mais na lista, seleciona o primeiro
+              setFreteSel(listaFinal[0]);
+            }
+          } else {
+            setFreteSel(null);
+          }
+        }
+
+        setOpcoesFrete(listaFinal);
+        setLoadingFrete(false);
+
+
+      } catch (err) {
+        console.error("Erro na cotação:", err);
+        setLoadingFrete(false);
+      }
+    }
+
+    calcularTudo();
+  }, [
+    cliente.cep || "",
+    lojistaId || "",
+    !!temFrete,
+    safeCart.map(i => `${i.id}-${i.qty}`).join('|'),
+    dadosLoja?.cep || "",
+    dadosLoja?.CEP || "",
+    JSON.stringify(dadosLoja?.transportadoras || {}),
+    dadosLoja?.cidade || "",
+    // Use um valor primitivo calculado aqui, em vez do objeto inteiro:
+    valorSubtotalProdutos >= (parseFloat(String(dadosLoja?.valorMinimoFreteGratis || "0").replace(/\./g, "").replace(",", ".")) || 0)
+  ]);
 
   useEffect(() => {
     if (temCheckoutOnlineAtivo()) { setQrCodeUrl(""); return; }
@@ -455,7 +481,7 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
     if (!fontPix || totalGeral <= 0) { setQrCodeUrl(""); return; }
     const v = totalGeral.toFixed(2);
     const f = (id: string, val: string) => id + String(val.length).padStart(2, "0") + val;
-    let payload = f("00", "01") + f("26", f("00", "br.gov.bcb.pix") + f("01", fontPix.trim())) + f("52", "0000") + f("53", "986") + f("54", v) + f("58", "BR") + f("59", "LOJA") + f("60", "CIDADE") + f("62", f("05", "***")) + "6304"; 
+    let payload = f("00", "01") + f("26", f("00", "br.gov.bcb.pix") + f("01", fontPix.trim())) + f("52", "0000") + f("53", "986") + f("54", v) + f("58", "BR") + f("59", "LOJA") + f("60", "CIDADE") + f("62", f("05", "***")) + "6304";
     const crc16 = (s: string) => {
       let c = 0xFFFF;
       for (let i = 0; i < s.length; i++) {
@@ -528,7 +554,7 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
             <div style={styles.card}>
               <h4 style={{ color: config.corTexto, margin: '0 0 15px 0' }}>ITENS NO CARRINHO</h4>
               {safeCart.length > 0 ? (
-                safeCart.map((item: any, index: number) => {
+                safeCart.map((item: Produto, index: number) => {
                   const key = item.cartItemKey || `item_${index}`;
                   const partes = item.variacao ? item.variacao.split("/") : [];
                   const requisitosAtivos = item.requisitos || requisitosDoBanco[item.id];
@@ -562,35 +588,35 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
                     </div>
                   );
                 })
-              ) : ( <p style={{ textAlign: 'center', color: '#aaa', padding: '20px 0' }}>Seu carrinho está vazio.</p> )}
+              ) : (<p style={{ textAlign: 'center', color: '#aaa', padding: '20px 0' }}>Seu carrinho está vazio.</p>)}
             </div>
             <div style={styles.card}>
               <h4 style={{ color: config.corTexto, margin: '0 0 15px 0' }}>DADOS DO CLIENTE</h4>
-              <input 
-  placeholder="Nome Completo *" 
-  style={styles.input} 
-  value={cliente.nome || ""} 
-  onChange={e => setCliente({ ...cliente, nome: e.target.value })} 
-/>
+              <input
+                placeholder="Nome Completo *"
+                style={styles.input}
+                value={cliente.nome || ""}
+                onChange={e => setCliente({ ...cliente, nome: e.target.value })}
+              />
 
-<input 
-  placeholder="WhatsApp (com DDD) *" 
-  style={styles.input} 
-  value={cliente.dsTelefone || ""} 
-  onChange={e => {
-    const valor = e.target.value.replace(/\D/g, "").replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-    const novoCliente = { ...cliente, dsTelefone: valor };
-    setCliente(novoCliente);
-    localStorage.setItem(`cliente_${lojistaSlug}`, JSON.stringify(novoCliente)); // Grava na hora
-  }}
-/>
+              <input
+                placeholder="WhatsApp (com DDD) *"
+                style={styles.input}
+                value={cliente.dsTelefone || ""}
+                onChange={e => {
+                  const valor = e.target.value.replace(/\D/g, "").replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+                  const novoCliente = { ...cliente, dsTelefone: valor };
+                  setCliente(novoCliente);
+                  localStorage.setItem(`cliente_${lojistaSlug}`, JSON.stringify(novoCliente)); // Grava na hora
+                }}
+              />
 
-<input 
-  placeholder="CPF *" 
-  style={styles.input} 
-  value={cliente.cpf || ""} 
-  onChange={e => setCliente({ ...cliente, cpf: aplicarMascaraCPF(e.target.value) })} 
-/>
+              <input
+                placeholder="CPF *"
+                style={styles.input}
+                value={cliente.cpf || ""}
+                onChange={e => setCliente({ ...cliente, cpf: aplicarMascaraCPF(e.target.value) })}
+              />
               {!cpfValido && <p style={{ color: '#ff4d4d', fontSize: '12px', marginTop: '-5px', marginBottom: '10px', fontWeight: 'bold' }}>⚠️ Número de CPF inválido</p>}
               {temFrete ? (
                 <>
@@ -609,7 +635,7 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
                   {loadingFrete && <p style={{ fontSize: 13, color: '#999', textAlign: 'center' }}>Calculando formas de entrega...</p>}
                   <div style={styles.freteGrid}>
                     {opcoesFrete.map(f => (
-                      <button key={f.id} type="button" onClick={() => { setFreteSel(f); if(f.id !== "frete_gratis_ativado") setFreteBackup(f); }} style={{ ...styles.freteCard, borderColor: freteSel?.id === f.id ? config.corDestaque : '#eee', background: freteSel?.id === f.id ? config.corSecundaria : '#fff', color: config.corTexto }}>
+                      <button key={f.id} type="button" onClick={() => { setFreteSel(f); if (f.id !== "frete_gratis_ativado") setFreteBackup(f); }} style={{ ...styles.freteCard, borderColor: freteSel?.id === f.id ? config.corDestaque : '#eee', background: freteSel?.id === f.id ? config.corSecundaria : '#fff', color: config.corTexto }}>
                         <small style={{ display: 'block', fontSize: '10px' }}>{f.name}</small>
                         <b style={{ display: 'block', fontSize: '12px' }}>{f.price === 0 ? "Grátis" : "R$ " + Number(f.price).toFixed(2).replace('.', ',')}</b>
                       </button>
@@ -630,7 +656,7 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
               <h3 style={{ color: config.corTexto, textAlign: 'center', margin: '0 0 15px 0' }}>RESUMO DO PEDIDO</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: '15px', fontSize: '14px' }}>
                 <div style={styles.rowBetween}><span style={{ color: '#64748b' }}>Total dos Produtos:</span><span style={{ fontWeight: '500', color: '#1e293b' }}>R$ {valorSubtotalProdutos.toFixed(2).replace('.', ',')}</span></div>
-                {valorDesconto > 0 && ( <div style={styles.rowBetween}><span style={{ color: '#2ecc71' }}>Cupom de Desconto:</span><span style={{ color: '#2ecc71', fontWeight: '500' }}>- R$ {valorDesconto.toFixed(2).replace('.', ',')}</span></div> )}
+                {valorDesconto > 0 && (<div style={styles.rowBetween}><span style={{ color: '#2ecc71' }}>Cupom de Desconto:</span><span style={{ color: '#2ecc71', fontWeight: '500' }}>- R$ {valorDesconto.toFixed(2).replace('.', ',')}</span></div>)}
                 <div style={styles.rowBetween}><span style={{ color: '#64748b' }}>Sub total:</span><span style={{ fontWeight: '500', color: '#1e293b' }}>R$ {valorSubTotalComDesconto.toFixed(2).replace('.', ',')}</span></div>
                 {temFrete && (
                   <div style={styles.rowBetween}>
@@ -645,7 +671,7 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
                 <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '5px' }}>Possui cupom?</p>
                 <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
                   <input placeholder="Digite aqui" value={cupomDigitado} onChange={e => setCupomDigitado(e.target.value)} style={{ ...styles.input, marginBottom: 0, fontSize: 12, flex: 1 }} />
-                  {descontoAtivo.valor > 0 && ( <button onClick={limparCupom} style={{ background: '#ff4d4d', color: '#fff', border: 'none', borderRadius: 8, padding: '0 10px', cursor: 'pointer' }}><X size={16}/></button> )}
+                  {descontoAtivo.valor > 0 && (<button onClick={limparCupom} style={{ background: '#ff4d4d', color: '#fff', border: 'none', borderRadius: 8, padding: '0 10px', cursor: 'pointer' }}><X size={16} /></button>)}
                 </div>
                 <button onClick={aplicarCupom} style={{ width: '100%', background: config.corTexto, color: 'white', border: 'none', borderRadius: 8, padding: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: 11 }}>APLICAR CUPOM</button>
               </div>
@@ -663,30 +689,30 @@ const [cliente, setCliente] = useState({ nome: "", cpf: "", cep: "", dsTelefone:
                   ) : <div style={{ padding: '10px', textAlign: 'center', fontSize: '12px', color: '#666' }}>Pagamento via PIX</div>
                 )}
               </div>
-              <button 
-                onClick={finalizarNoWhatsApp} 
-                disabled={!podeFinalizar} 
-                style={{ 
-                  ...styles.btnAction, 
-                  backgroundColor: dadosLoja?.lojaAberta === false ? '#94a3b8' : (podeFinalizar ? '#25D366' : '#ccc'), 
-                  color: podeFinalizar ? '#fff' : '#666', 
-                  cursor: podeFinalizar ? 'pointer' : 'not-allowed' 
+              <button
+                onClick={finalizarNoWhatsApp}
+                disabled={!podeFinalizar}
+                style={{
+                  ...styles.btnAction,
+                  backgroundColor: dadosLoja?.lojaAberta === false ? '#94a3b8' : (podeFinalizar ? '#25D366' : '#ccc'),
+                  color: podeFinalizar ? '#fff' : '#666',
+                  cursor: podeFinalizar ? 'pointer' : 'not-allowed'
                 }}
               >
                 {dadosLoja?.lojaAberta === false ? 'PEDIDOS BLOQUEADOS (MODO VITRINE)' : (podeFinalizar ? (temCheckoutOnlineAtivo() ? 'FINALIZAR PAGAMENTO' : 'FINALIZAR NO WHATSAPP') : 'PREENCHA OS DADOS')}
               </button>
-              <button 
-  onClick={limparTudo} 
-  style={{
-    ...styles.btnClean,
-    padding: '10px',
-    border: '1px solid #f70808',
-    borderRadius: '8px',
-    marginTop: '20px'
-  }}
->
-  &times; LIMPAR CARRINHO E DADOS
-</button>
+              <button
+                onClick={limparTudo}
+                style={{
+                  ...styles.btnClean,
+                  padding: '10px',
+                  border: '1px solid #f70808',
+                  borderRadius: '8px',
+                  marginTop: '20px'
+                }}
+              >
+                &times; LIMPAR CARRINHO E DADOS
+              </button>
             </div>
           </div>
         </div>

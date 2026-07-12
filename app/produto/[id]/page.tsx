@@ -2,16 +2,16 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { db } from "@/lib/firebase";
-import { 
-  doc, 
-  getDoc, 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
+import {
+  doc,
+  getDoc,
+  collection,
+  query,
+  where,
+  getDocs,
   limit,
   addDoc,
-  serverTimestamp 
+  serverTimestamp
 } from "firebase/firestore";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { ShoppingCart, ChevronLeft } from "lucide-react";
@@ -22,7 +22,7 @@ export default function ProdutoAgrupadoPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { addToCart } = useCart();
-  
+
   const [produto, setProduto] = useState<any>(null);
   const [lojaDados, setLojaDados] = useState<any>(null);
   const [imgAtiva, setImgAtiva] = useState("");
@@ -76,11 +76,11 @@ export default function ProdutoAgrupadoPage() {
     async function load() {
       const prodId = params?.id as string;
       if (!prodId || !lojaParam) return setLoading(false);
-      
+
       try {
         const qLoja = query(collection(db, "lojistas"), where("slug", "==", lojaParam), limit(1));
         const snapLoja = await getDocs(qLoja);
-        
+
         if (!snapLoja.empty) {
           const lojistaDoc = snapLoja.docs[0];
           const lojistaId = lojistaDoc.id;
@@ -89,17 +89,17 @@ export default function ProdutoAgrupadoPage() {
 
           const refProd = doc(db, "lojistas", lojistaId, "produtos", prodId);
           const snapProd = await getDoc(refProd);
-          
+
           if (snapProd.exists()) {
             const data = snapProd.data();
             setProduto(data);
             setImgAtiva(data.capa || "");
           }
         }
-      } catch (e) { 
-        console.error("Erro ao carregar dados:", e); 
-      } finally { 
-        setLoading(false); 
+      } catch (e) {
+        console.error("Erro ao carregar dados:", e);
+      } finally {
+        setLoading(false);
       }
     }
     load();
@@ -159,14 +159,14 @@ export default function ProdutoAgrupadoPage() {
     return produto.variacoes.filter((v: any) => {
       const valor = (v.v1 || v.sabor || v.cor || v.modelo || "").trim();
       if (!valor || vistas.has(valor.toLowerCase())) return false;
-       vistas.add(valor.toLowerCase());
+      vistas.add(valor.toLowerCase());
       return true;
     });
   }, [produto?.variacoes]);
 
   const listaOpcoesV2 = useMemo(() => {
     if (!v1Selecionada || !produto?.variacoes) return [];
-    const sub = produto.variacoes.filter((v: any) => 
+    const sub = produto.variacoes.filter((v: any) =>
       (v.v1 || v.sabor || v.cor || v.modelo || "").trim().toLowerCase() === v1Selecionada.toLowerCase()
     );
     const vistas = new Set();
@@ -190,7 +190,7 @@ export default function ProdutoAgrupadoPage() {
 
     const key = `carrinho_${lojaParam}`;
     const salvo = localStorage.getItem(key);
-    
+
     let dadosExistentes: any = { items: [] };
     if (salvo) {
       try {
@@ -218,7 +218,7 @@ export default function ProdutoAgrupadoPage() {
       quantidade: 1,
       qty: 1,
       requisitos: produto.requisitos || {},
-      
+
       // GARANTIA DOS 3 CAMPOS LOGÍSTICOS
       permiteRetirada: !!produto.permiteRetirada,
       envioTransportadora: !!produto.envioTransportadora,
@@ -256,14 +256,14 @@ export default function ProdutoAgrupadoPage() {
             </button>
             <div style={styles.logoBox} onClick={irParaHome}>
               <div style={{ width: '90px', height: '90px', backgroundColor: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '15px' }}>
-                {lojaDados?.logoUrl ? <img src={lojaDados.logoUrl} style={styles.logoImg} alt="Logo" /> : <span style={{fontSize: '10px', color: '#333'}}>Logo</span>}
+                {lojaDados?.logoUrl ? <img src={lojaDados.logoUrl} style={styles.logoImg} alt="Logo" /> : <span style={{ fontSize: '10px', color: '#333' }}>Logo</span>}
               </div>
               <span style={{ fontSize: '28px', color: 'white', fontWeight: '900', textShadow: '2px 2px 4px rgba(0,0,0,0.3)', letterSpacing: '1px', textTransform: 'uppercase' }}>
                 {(lojaDados?.nomeLoja || lojaParam || "").toUpperCase()}
               </span>
             </div>
           </div>
-          
+
           {lojaDados?.lojaAberta !== false && (
             <div style={styles.cartIconBox} onClick={irParaCarrinho}>
               <ShoppingCart size={30} color="white" />
@@ -279,7 +279,7 @@ export default function ProdutoAgrupadoPage() {
         </div>
       )}
 
-      <main style={{...styles.main, paddingTop: lojaDados?.lojaAberta === false ? '160px' : '140px'}}>
+      <main style={{ ...styles.main, paddingTop: lojaDados?.lojaAberta === false ? '160px' : '140px' }}>
         <div className="product-layout">
           <section className="gallery">
             <div style={styles.mainImgWrapper}>
@@ -287,7 +287,14 @@ export default function ProdutoAgrupadoPage() {
             </div>
             <div style={styles.thumbScroll}>
               {imagensGaleria.map((img: string, idx: number) => (
-                <div key={idx} onClick={() => setImgAtiva(img)} style={{...styles.thumb, border: imgAtiva === img ? `2px solid ${config.corDestaque}` : '1px solid #ddd'}}>
+                <div
+                  key={idx}
+                  onClick={() => setImgAtiva(img)}
+                  style={{
+                    ...styles.thumb,
+                    border: imgAtiva === img ? `2px solid ${config.corDestaque}` : '1px solid #ddd'
+                  }}
+                >
                   <img src={img} style={styles.thumbImg} alt="Miniatura" />
                 </div>
               ))}
@@ -295,25 +302,25 @@ export default function ProdutoAgrupadoPage() {
           </section>
 
           <section style={styles.infoArea}>
-            <h1 style={{...styles.productTitle, color: config.corTextoDestaque}}>{produto.nome}</h1>
+            <h1 style={{ ...styles.productTitle, color: config.corTextoDestaque }}>{produto.nome}</h1>
             <div style={styles.priceContainer}>
-               <span style={{...styles.priceText, color: config.corTextoDestaque}}>
-                 R$ {variacaoFinal ? variacaoFinal.preco : (produto.precoBasico || "0,00")}
-               </span>
+              <span style={{ ...styles.priceText, color: config.corTextoDestaque }}>
+                R$ {variacaoFinal ? variacaoFinal.preco : (produto.precoBasico || "0,00")}
+              </span>
             </div>
 
             <div style={styles.variationsSection}>
               {produto.nomeVar1 && (
-                <div style={{marginBottom: '20px'}}>
+                <div style={{ marginBottom: '20px' }}>
                   <p style={styles.varLabel}>{produto.nomeVar1}</p>
                   <div style={styles.varGrid}>
                     {listaOpcoesV1.map((item: any, i: number) => {
                       const valor = (item.v1 || item.sabor || item.cor || item.modelo || "").trim();
                       const ativo = v1Selecionada === valor;
                       return (
-                        <div key={i} onClick={() => { setV1Selecionada(valor); if(item.foto) setImgAtiva(item.foto); }} style={{...styles.varCard, border: ativo ? `2px solid ${config.corDestaque}` : '1px solid #ddd'}}>
-                            <div style={styles.varImgBox}>{item.foto ? <img src={item.foto} style={styles.varCardImg} alt={valor} /> : <div style={{background: '#f0f0f0', height: '100%'}} />}</div>
-                            <span style={styles.varLabelSmall}>{valor}</span>
+                        <div key={i} onClick={() => { setV1Selecionada(valor); if (item.foto) setImgAtiva(item.foto); }} style={{ ...styles.varCard, border: ativo ? `2px solid ${config.corDestaque}` : '1px solid #ddd' }}>
+                          <div style={styles.varImgBox}>{item.foto ? <img src={item.foto} style={styles.varCardImg} alt={valor} /> : <div style={{ background: '#f0f0f0', height: '100%' }} />}</div>
+                          <span style={styles.varLabelSmall}>{valor}</span>
                         </div>
                       );
                     })}
@@ -322,29 +329,40 @@ export default function ProdutoAgrupadoPage() {
               )}
 
               {produto.nomeVar2 && listaOpcoesV2.length > 0 && (
-                <div style={{marginBottom: '20px'}}>
+                <div style={{ marginBottom: '20px' }}>
                   <p style={styles.varLabel}>{produto.nomeVar2}</p>
                   <div style={styles.varGrid}>
-                    {listaOpcoesV2.map((v, i) => (
-                      <button key={i} onClick={() => setV2Selecionada(v)} style={{...styles.v2Btn, backgroundColor: v2Selecionada === v ? config.corDestaque : '#fff', borderColor: v2Selecionada === v ? config.corDestaque : '#ddd', color: v2Selecionada === v ? 'white' : config.corTextoDestaque}}>{v}</button>
+                    {listaOpcoesV2.map((v: string, i: number) => (
+                      <button
+                        key={i}
+                        onClick={() => setV2Selecionada(v)}
+                        style={{
+                          ...styles.v2Btn,
+                          backgroundColor: v2Selecionada === v ? config.corDestaque : '#fff',
+                          borderColor: v2Selecionada === v ? config.corDestaque : '#ddd',
+                          color: v2Selecionada === v ? 'white' : config.corTextoDestaque
+                        }}
+                      >
+                        {v}
+                      </button>
                     ))}
                   </div>
                 </div>
               )}
             </div>
 
-            <button 
-              disabled={!podeAdicionar} 
-              onClick={handleAdicionar} 
+            <button
+              disabled={!podeAdicionar}
+              onClick={handleAdicionar}
               style={{
-                ...styles.btnAdd, 
-                backgroundColor: lojaDados?.lojaAberta === false ? '#94a3b8' : (podeAdicionar ? config.corDestaque : '#ccc'), 
+                ...styles.btnAdd,
+                backgroundColor: lojaDados?.lojaAberta === false ? '#94a3b8' : (podeAdicionar ? config.corDestaque : '#ccc'),
                 color: podeAdicionar ? 'white' : '#666',
                 cursor: podeAdicionar ? 'pointer' : 'not-allowed'
               }}
             >
-              {lojaDados?.lojaAberta === false 
-                ? "PEDIDOS BLOQUEADOS (MODO VITRINE)" 
+              {lojaDados?.lojaAberta === false
+                ? "PEDIDOS BLOQUEADOS (MODO VITRINE)"
                 : (podeAdicionar ? "ADICIONAR AO CARRINHO" : "SELECIONE AS OPÇÕES")
               }
             </button>
@@ -352,7 +370,7 @@ export default function ProdutoAgrupadoPage() {
         </div>
 
         <section style={styles.descriptionSection}>
-          <h3 style={{...styles.descTitle, color: config.corTextoDestaque}}>Descrição</h3>
+          <h3 style={{ ...styles.descTitle, color: config.corTextoDestaque }}>Descrição</h3>
           <p style={styles.descText}>{produto.descricao || "Este lojista não adicionou uma descrição para este produto."}</p>
         </section>
       </main>
@@ -370,7 +388,7 @@ export default function ProdutoAgrupadoPage() {
         )}
         <button onClick={irParaHome} style={{ ...styles.btnVoltarInicio, borderColor: config.corTextoDestaque, color: config.corTextoDestaque }}>← Voltar ao Início</button>
       </footer>
-      <a href={`https://wa.me/${lojaDados?.celular?.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{...styles.waFloat, backgroundColor: config.corSucesso}}>📞</a>
+      <a href={`https://wa.me/${lojaDados?.celular?.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ ...styles.waFloat, backgroundColor: config.corSucesso }}>📞</a>
 
       <style jsx>{`
         .product-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }

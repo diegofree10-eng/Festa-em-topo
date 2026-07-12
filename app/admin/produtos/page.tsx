@@ -1,32 +1,32 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db, auth, storage } from "@/lib/firebase"; 
-import { 
-  collection, addDoc, doc, query, orderBy, updateDoc, 
-  deleteDoc, onSnapshot, writeBatch, setDoc, getDoc 
+import { db, auth, storage } from "@/lib/firebase";
+import {
+  collection, addDoc, doc, query, orderBy, updateDoc,
+  deleteDoc, onSnapshot, writeBatch, setDoc, getDoc
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, uploadString } from "firebase/storage";
 import { onAuthStateChanged } from "firebase/auth";
-import { FiDownload, FiSettings } from "react-icons/fi"; 
+import { FiDownload, FiSettings } from "react-icons/fi";
 
 // --- IMPORTAÇÃO DOS ESTADOS E MODAIS ---
-import { styles } from "./styles"; 
+import { styles } from "./styles";
 import RequisitosModal from "@/app/admin/components/RequisitosModal";
 import VariacoesModal from "@/app/admin/components/VariacoesModal";
-import CategoriaSubCat from "@/app/admin/components/CategoriaSubCat"; 
-import ModalGeradorSKU from "@/app/admin/components/ModalGeradorSKU"; 
+import CategoriaSubCat from "@/app/admin/components/CategoriaSubCat";
+import ModalGeradorSKU from "@/app/admin/components/ModalGeradorSKU";
 import EtiquetaModal from "@/app/admin/components/EtiquetaModal";
 
 // --- CONFIGURAÇÃO DE SEGURANÇA E PLANOS ---
 const LIMITES_PLANOS = {
-  Bronze: { produtos: 60, categories: 6 },
+  Bronze: { produtos: 60, categorias: 6 },
   Prata: { produtos: 80, categorias: 8 },
   Ouro: { produtos: 110, categorias: 10 },
 };
 
 const PALAVRAS_PROIBIDAS = [
-  "admin", "master", "suporte", "festaemtopo", "root", "null", 
+  "admin", "master", "suporte", "festaemtopo", "root", "null",
   "undefined", "api", "vendas", "financeiro", "ajuda", "config",
   "sistema", "login", "auth", "teste", "gerente", "houseconviteria",
   "chefe"
@@ -37,21 +37,21 @@ export default function CadastroProdutos() {
   const [planoLojista, setPlanoLojista] = useState("Bronze");
   const [planosMaster, setPlanosMaster] = useState<any>(null);
   const [limites, setLimites] = useState({ produtos: 0, categorias: 0 });
-  
+
   const [nome, setNome] = useState("");
-  const [sku, setSku] = useState(""); 
-  const [isModalSKUOpen, setIsModalSKUOpen] = useState(false); 
+  const [sku, setSku] = useState("");
+  const [isModalSKUOpen, setIsModalSKUOpen] = useState(false);
   const [listaParaImprimir, setListaParaImprimir] = useState<any[]>([]); // ESTADO NOVO
   const [descricao, setDescricao] = useState("");
   const [categoria, setCategoria] = useState("");
-  const [subcategoria, setSubcategoria] = useState(""); 
+  const [subcategoria, setSubcategoria] = useState("");
   const [precoBasico, setPrecoBasico] = useState("");
-  const [custoUnitario, setCustoUnitario] = useState(""); 
+  const [custoUnitario, setCustoUnitario] = useState("");
   const [ativo, setAtivo] = useState(true);
-  
+
   const [envioTransportadora, setEnvioTransportadora] = useState(true);
   const [permiteRetirada, setPermiteRetirada] = useState(false);
-  
+
   const [peso, setPeso] = useState("");
   const [comprimento, setComprimento] = useState("");
   const [largura, setLargura] = useState("");
@@ -63,11 +63,11 @@ export default function CadastroProdutos() {
   const [produtos, setProdutos] = useState<any[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [listaCategorias, setListaCategorias] = useState<any[]>([]);
-  const [showCatManager, setShowCatManager] = useState(false); 
+  const [showCatManager, setShowCatManager] = useState(false);
   const [showDescModal, setShowDescModal] = useState(false);
   const [showReqModal, setShowReqModal] = useState(false);
-  const [requisitos, setRequisitos] = useState({ 
-    pedeNome: false, pedeIdade: false, pedeData: false, pedeObs: false 
+  const [requisitos, setRequisitos] = useState({
+    pedeNome: false, pedeIdade: false, pedeData: false, pedeObs: false
   });
   const [busca, setBusca] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("Todos");
@@ -75,7 +75,7 @@ export default function CadastroProdutos() {
   const [modoMassa, setModoMassa] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [showVarModal, setShowVarModal] = useState(false);
-  
+
   const [nomeVar1, setNomeVar1] = useState("");
   const [opcoesVar1, setOpcoesVar1] = useState<string[]>([]);
   const [nomeVar2, setNomeVar2] = useState("");
@@ -98,11 +98,11 @@ export default function CadastroProdutos() {
           }
         });
 
-        onSnapshot(query(collection(db, "lojistas", user.uid, "produtos"), orderBy("createdAt", "desc")), (snap) => { 
-          setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() }))); 
+        onSnapshot(query(collection(db, "lojistas", user.uid, "produtos"), orderBy("createdAt", "desc")), (snap) => {
+          setProdutos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
-        onSnapshot(query(collection(db, "lojistas", user.uid, "categorias"), orderBy("nome", "asc")), (snap) => { 
-          setListaCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() }))); 
+        onSnapshot(query(collection(db, "lojistas", user.uid, "categorias"), orderBy("nome", "asc")), (snap) => {
+          setListaCategorias(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
       }
     });
@@ -179,7 +179,7 @@ export default function CadastroProdutos() {
   });
 
   const calcularLucro = (venda: string, custo: string) => {
-    const v = parseFloat(venda); 
+    const v = parseFloat(venda);
     const c = parseFloat(custo);
     if (!v || !c || c === 0) return null;
     return (((v - c) / c) * 100).toFixed(0);
@@ -207,7 +207,7 @@ export default function CadastroProdutos() {
       return;
     }
     const combos = gerarCombinacoes();
-    const novaTabela = { ...tabelaAtual }; 
+    const novaTabela = { ...tabelaAtual };
     combos.forEach(c => {
       if (!novaTabela[c.key]?.sku) {
         const sufixo1 = c.v1 ? c.v1.substring(0, 3).toUpperCase() : "";
@@ -218,7 +218,7 @@ export default function CadastroProdutos() {
         };
       }
     });
-    setTabela({ ...novaTabela }); 
+    setTabela({ ...novaTabela });
   };
 
   async function uploadImagens() {
@@ -329,8 +329,8 @@ export default function CadastroProdutos() {
 
   const produtosFiltrados = produtos.filter(p => {
     return p.nome?.toLowerCase().includes(busca.toLowerCase()) &&
-           (filtroCategoria === "Todos" || p.categoria === filtroCategoria) &&
-           (filtroStatus === "Todos" || (filtroStatus === "Visíveis" ? p.ativo : !p.ativo));
+      (filtroCategoria === "Todos" || p.categoria === filtroCategoria) &&
+      (filtroStatus === "Todos" || (filtroStatus === "Visíveis" ? p.ativo : !p.ativo));
   });
 
   return (
@@ -338,9 +338,9 @@ export default function CadastroProdutos() {
       {showDescModal && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
-            <h3 style={{marginBottom: '10px'}}>Editar Descrição</h3>
+            <h3 style={{ marginBottom: '10px' }}>Editar Descrição</h3>
             <textarea style={styles.modalTextarea} value={descricao} onChange={e => setDescricao(e.target.value)} autoFocus />
-            <div style={{display: 'flex', gap: '10px', marginTop: '15px'}}>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
               <button onClick={() => setShowDescModal(false)} style={styles.btnSave}>Concluir</button>
             </div>
           </div>
@@ -348,15 +348,15 @@ export default function CadastroProdutos() {
       )}
 
       {showReqModal && (
-        <RequisitosModal 
-          lojistaId={uid || ""} 
-          config={requisitos} 
-          onSave={(novos: any) => { setRequisitos(novos); setShowReqModal(false); }} 
+        <RequisitosModal
+          lojistaId={uid || ""}
+          config={requisitos}
+          onSave={(novos: any) => { setRequisitos(novos); setShowReqModal(false); }}
           onClose={() => setShowReqModal(false)}
         />
       )}
-      
-      <VariacoesModal 
+
+      <VariacoesModal
         key={showVarModal ? "aberto" : "fechado"}
         showVarModal={showVarModal}
         setShowVarModal={setShowVarModal}
@@ -371,16 +371,16 @@ export default function CadastroProdutos() {
         sugerirSkus={sugerirSkus}
       />
 
-      <EtiquetaModal 
+      <EtiquetaModal
         isOpen={listaParaImprimir.length > 0}
         listaProdutos={listaParaImprimir}
         onClose={() => setListaParaImprimir([])}
       />
 
       {showCatManager && (
-        <CategoriaSubCat 
-          lojistaId={uid || ""} 
-          onClose={() => setShowCatManager(false)} 
+        <CategoriaSubCat
+          lojistaId={uid || ""}
+          onClose={() => setShowCatManager(false)}
           limite={limites.categorias}
         />
       )}
@@ -388,45 +388,45 @@ export default function CadastroProdutos() {
       {isModalSKUOpen && (
         <ModalGeradorSKU
           lojistaId={uid || ""}
-          onClose={() => setIsModalSKUOpen(false)} 
-          onSave={(codigo) => { setSku(codigo); setIsModalSKUOpen(false); }} 
+          onClose={() => setIsModalSKUOpen(false)}
+          onSave={(codigo: string) => { setSku(codigo); setIsModalSKUOpen(false); }}
         />
       )}
 
       <div style={styles.sidebar}>
         <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '10px', marginBottom: '15px', border: '1px solid #e2e8f0' }}>
-           <p style={{ fontSize: '11px', margin: '0 0 8px 0', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Uso do Plano: {planoLojista}</p>
-           <div style={{ marginBottom: '10px' }}>
-             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
-               <span>📦 Produtos</span>
-               <span>{produtos.length} / {limites.produtos}</span>
-             </div>
-             <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-               <div style={{ width: `${Math.min((produtos.length / limites.produtos) * 100, 100)}%`, height: '100%', background: produtos.length >= limites.produtos ? '#ef4444' : '#10b981', transition: '0.3s' }} />
-             </div>
-           </div>
-           <div style={{ marginBottom: '5px' }}>
-             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
-               <span>📁 Categorias</span>
-               <span>{listaCategorias.length} / {limites.categorias}</span>
-             </div>
-             <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-               <div style={{ width: `${Math.min((listaCategorias.length / limites.categorias) * 100, 100)}%`, height: '100%', background: listaCategorias.length >= limites.categorias ? '#ef4444' : '#3b82f6', transition: '0.3s' }} />
-             </div>
-           </div>
+          <p style={{ fontSize: '11px', margin: '0 0 8px 0', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Uso do Plano: {planoLojista}</p>
+          <div style={{ marginBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
+              <span>📦 Produtos</span>
+              <span>{produtos.length} / {limites.produtos}</span>
+            </div>
+            <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min((produtos.length / limites.produtos) * 100, 100)}%`, height: '100%', background: produtos.length >= limites.produtos ? '#ef4444' : '#10b981', transition: '0.3s' }} />
+            </div>
+          </div>
+          <div style={{ marginBottom: '5px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', fontWeight: '500' }}>
+              <span>📁 Categorias</span>
+              <span>{listaCategorias.length} / {limites.categorias}</span>
+            </div>
+            <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+              <div style={{ width: `${Math.min((listaCategorias.length / limites.categorias) * 100, 100)}%`, height: '100%', background: listaCategorias.length >= limites.categorias ? '#ef4444' : '#3b82f6', transition: '0.3s' }} />
+            </div>
+          </div>
         </div>
 
         <h3 style={styles.sideTitle}>{editId ? "📝 Editar Produto" : "📦 Novo Produto"}</h3>
         <input style={styles.input} value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do Produto *" />
-        
+
         <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '5px', display: 'block', marginTop: '10px' }}>SKU (Código)</label>
         <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
-          <input style={{...styles.input, marginBottom: 0}} value={sku} onChange={e => setSku(e.target.value.toUpperCase())} placeholder="Ex: CAM-AZU-G" />
+          <input style={{ ...styles.input, marginBottom: 0 }} value={sku} onChange={e => setSku(e.target.value.toUpperCase())} placeholder="Ex: CAM-AZU-G" />
           <button type="button" onClick={() => setIsModalSKUOpen(true)} style={{ padding: '0 10px', background: '#334155', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Gen</button>
         </div>
-        
-        <div style={{display:'flex', gap:'5px', marginBottom:'10px'}}>
-          <select style={{...styles.input, marginBottom:0, flex: 1}} value={categoria} onChange={e => {setCategoria(e.target.value); setSubcategoria("");}}>
+
+        <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
+          <select style={{ ...styles.input, marginBottom: 0, flex: 1 }} value={categoria} onChange={e => { setCategoria(e.target.value); setSubcategoria(""); }}>
             <option value="">Categoria... *</option>
             {listaCategorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
           </select>
@@ -442,26 +442,26 @@ export default function CadastroProdutos() {
           </select>
         )}
 
-        <button onClick={() => setShowVarModal(true)} style={{...styles.btnUpload, border: '1px solid #ee4d2d', color: '#ee4d2d', fontWeight: 'bold', marginBottom: '10px'}}>
+        <button onClick={() => setShowVarModal(true)} style={{ ...styles.btnUpload, border: '1px solid #ee4d2d', color: '#ee4d2d', fontWeight: 'bold', marginBottom: '10px' }}>
           {temVariaveisComPreco ? "⚙️ Editar Grade" : "➕ Adicionar Grade"}
         </button>
 
-        <button onClick={() => setShowReqModal(true)} style={{...styles.btnUpload, border: '1px solid #d946ef', color: '#d946ef', fontWeight: 'bold', marginBottom: '10px'}}>
+        <button onClick={() => setShowReqModal(true)} style={{ ...styles.btnUpload, border: '1px solid #d946ef', color: '#d946ef', fontWeight: 'bold', marginBottom: '10px' }}>
           🎯 Personalização ({Object.values(requisitos || {}).filter(Boolean).length})
         </button>
 
-        <div style={{...styles.boxGray, marginBottom: '10px'}}>
-            <label style={{fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '5px', display: 'block'}}>Configurações de Entrega</label>
-            <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
-                <label style={{...styles.checkLabel, cursor: 'pointer'}}>
-                    <input type="checkbox" checked={envioTransportadora} onChange={e => setEnvioTransportadora(e.target.checked)} />
-                    <span>Envio por Transportadora</span>
-                </label>
-                <label style={{...styles.checkLabel, cursor: 'pointer'}}>
-                    <input type="checkbox" checked={permiteRetirada} onChange={e => setPermiteRetirada(e.target.checked)} />
-                    <span>Permitir Retirada na Loja</span>
-                </label>
-            </div>
+        <div style={{ ...styles.boxGray, marginBottom: '10px' }}>
+          <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '5px', display: 'block' }}>Configurações de Entrega</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ ...styles.checkLabel, cursor: 'pointer' }}>
+              <input type="checkbox" checked={envioTransportadora} onChange={e => setEnvioTransportadora(e.target.checked)} />
+              <span>Envio por Transportadora</span>
+            </label>
+            <label style={{ ...styles.checkLabel, cursor: 'pointer' }}>
+              <input type="checkbox" checked={permiteRetirada} onChange={e => setPermiteRetirada(e.target.checked)} />
+              <span>Permitir Retirada na Loja</span>
+            </label>
+          </div>
         </div>
 
         <textarea style={styles.textarea} value={descricao} onClick={() => setShowDescModal(true)} readOnly placeholder="Descrição... *" />
@@ -477,30 +477,30 @@ export default function CadastroProdutos() {
             </div>
           </div>
         ) : (
-          <div style={{...styles.boxGray, background: '#fef2f2', border: '1px solid #fee2e2'}}>
-            <p style={{fontSize: '11px', color: '#b91c1c', margin: 0, fontWeight: 'bold', textAlign: 'center'}}>
-                {permiteRetirada ? '🏪 Produto para Retirada' : '📧 Produto Digital'}
+          <div style={{ ...styles.boxGray, background: '#fef2f2', border: '1px solid #fee2e2' }}>
+            <p style={{ fontSize: '11px', color: '#b91c1c', margin: 0, fontWeight: 'bold', textAlign: 'center' }}>
+              {permiteRetirada ? '🏪 Produto para Retirada' : '📧 Produto Digital'}
             </p>
           </div>
         )}
 
-        <div style={{...styles.boxGray, opacity: temVariaveisComPreco ? 0.6 : 1}}>
+        <div style={{ ...styles.boxGray, opacity: temVariaveisComPreco ? 0.6 : 1 }}>
           <label style={styles.miniLabel}>Valores R$</label>
-          <div style={{display:'flex', gap:'5px'}}>
-            <input disabled={temVariaveisComPreco} style={{...styles.input, marginBottom:0}} value={temVariaveisComPreco ? "Grade" : precoBasico} onChange={e => formatInput(e.target.value, setPrecoBasico)} placeholder="Venda" />
-            <input disabled={temVariaveisComPreco} style={{...styles.input, marginBottom:0}} value={temVariaveisComPreco ? "Grade" : custoUnitario} onChange={e => formatInput(e.target.value, setCustoUnitario)} placeholder="Custo" />
+          <div style={{ display: 'flex', gap: '5px' }}>
+            <input disabled={temVariaveisComPreco} style={{ ...styles.input, marginBottom: 0 }} value={temVariaveisComPreco ? "Grade" : precoBasico} onChange={e => formatInput(e.target.value, setPrecoBasico)} placeholder="Venda" />
+            <input disabled={temVariaveisComPreco} style={{ ...styles.input, marginBottom: 0 }} value={temVariaveisComPreco ? "Grade" : custoUnitario} onChange={e => formatInput(e.target.value, setCustoUnitario)} placeholder="Custo" />
           </div>
         </div>
 
         <div style={styles.previewGrid}>
           {imagens.map((img, i) => (
-            <div key={i} style={{position:'relative'}}>
+            <div key={i} style={{ position: 'relative' }}>
               <img src={img} style={styles.imgThumb} />
               <button onClick={() => setImagens(imagens.filter((_, idx) => idx !== i))} style={styles.btnDelImg}>×</button>
             </div>
           ))}
           {files.map((f, i) => (
-             <img key={i} src={URL.createObjectURL(f)} style={{...styles.imgThumb, border:'2px solid #3b82f6'}} />
+            <img key={i} src={URL.createObjectURL(f)} style={{ ...styles.imgThumb, border: '2px solid #3b82f6' }} />
           ))}
         </div>
 
@@ -527,29 +527,29 @@ export default function CadastroProdutos() {
               <option value="Visíveis">✅</option>
               <option value="Ocultos">🚫</option>
             </select>
-            <button onClick={() => setModoMassa(!modoMassa)} style={{...styles.btnGeneric, background: modoMassa ? '#3b82f6' : '#fff', color: modoMassa ? '#fff' : '#3b82f6'}}>Massa</button>
-            <button onClick={exportarProdutosCSV} style={{...styles.btnGeneric, background: '#10b981', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '5px'}}>
+            <button onClick={() => setModoMassa(!modoMassa)} style={{ ...styles.btnGeneric, background: modoMassa ? '#3b82f6' : '#fff', color: modoMassa ? '#fff' : '#3b82f6' }}>Massa</button>
+            <button onClick={exportarProdutosCSV} style={{ ...styles.btnGeneric, background: '#10b981', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <FiDownload /> Exportar
             </button>
           </div>
-          
+
           {modoMassa && (
             <div style={styles.massPanel}>
-              <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                <button onClick={() => setSelecionados(selecionados.length === produtosFiltrados.length ? [] : produtosFiltrados.map(p => p.id))} style={{...styles.btnMass, borderColor: '#cbd5e1'}}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button onClick={() => setSelecionados(selecionados.length === produtosFiltrados.length ? [] : produtosFiltrados.map(p => p.id))} style={{ ...styles.btnMass, borderColor: '#cbd5e1' }}>
                   {selecionados.length === produtosFiltrados.length ? "Desmarcar Todos" : "Selecionar Todos"}
                 </button>
-                <span style={{fontSize:'12px', fontWeight:'bold', color: '#1e40af'}}>{selecionados.length} itens selecionados</span>
+                <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#1e40af' }}>{selecionados.length} itens selecionados</span>
               </div>
-              <div style={{display:'flex', gap:'5px'}}>
-                <button onClick={() => acaoEmMassa('mostrar')} style={{...styles.btnMass, color: '#059669'}}>👁️ Mostrar</button>
-                <button onClick={() => acaoEmMassa('ocultar')} style={{...styles.btnMass, color: '#64748b'}}>🚫 Ocultar</button>
-                <button onClick={() => acaoEmMassa('preco')} style={{...styles.btnMass, color: '#3b82f6'}}>💰 Preço</button>
-                <button onClick={() => acaoEmMassa('excluir')} style={{...styles.btnMass, color:'#ef4444', borderColor: '#fecaca'}}>🗑️ Excluir</button>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <button onClick={() => acaoEmMassa('mostrar')} style={{ ...styles.btnMass, color: '#059669' }}>👁️ Mostrar</button>
+                <button onClick={() => acaoEmMassa('ocultar')} style={{ ...styles.btnMass, color: '#64748b' }}>🚫 Ocultar</button>
+                <button onClick={() => acaoEmMassa('preco')} style={{ ...styles.btnMass, color: '#3b82f6' }}>💰 Preço</button>
+                <button onClick={() => acaoEmMassa('excluir')} style={{ ...styles.btnMass, color: '#ef4444', borderColor: '#fecaca' }}>🗑️ Excluir</button>
                 <button onClick={() => {
                   const selecionadosObj = produtos.filter(p => selecionados.includes(p.id));
                   setListaParaImprimir(selecionadosObj);
-                }} style={{...styles.btnMass, color: '#f59e0b'}}>🖨️ Imprimir Selecionados</button>
+                }} style={{ ...styles.btnMass, color: '#f59e0b' }}>🖨️ Imprimir Selecionados</button>
               </div>
             </div>
           )}
@@ -559,48 +559,48 @@ export default function CadastroProdutos() {
           {produtosFiltrados.map(p => {
             const lucro = calcularLucro(p.precoBasico, p.custoUnitario);
             return (
-              <div key={p.id} style={{...styles.card, opacity: p.ativo ? 1 : 0.6}}>
+              <div key={p.id} style={{ ...styles.card, opacity: p.ativo ? 1 : 0.6 }}>
                 {p.destaque && <span style={styles.starBadge}>⭐</span>}
                 {modoMassa && <input type="checkbox" style={styles.cardCheck} checked={selecionados.includes(p.id)} onChange={e => e.target.checked ? setSelecionados([...selecionados, p.id]) : setSelecionados(selecionados.filter(id => id !== p.id))} />}
                 <img src={p.capa} style={styles.cardImg} alt={p.nome} />
                 <div style={styles.cardBody}>
                   <h4 style={styles.cardTitle}>{p.nome}</h4>
-                  <div style={{display:'flex', alignItems:'center', gap:'5px', marginBottom:'4px'}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}>
                     <span style={styles.cardPrice}>R$ {p.precoBasico}</span>
                     {lucro && <span style={styles.markupTag}>+{lucro}%</span>}
                   </div>
                   <div style={styles.cardActions}>
-    <button onClick={() => uid && updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {destaque: !p.destaque})} style={styles.btnSlim}>{p.destaque ? "⭐ Destacado" : "☆ Destacar"}</button>
-    <button onClick={() => {
-        // (sua lógica de editar mantida)
-        setEditId(p.id); setNome(p.nome); setSku(p.sku || ""); setCategoria(p.categoria || ""); setSubcategoria(p.subcategoria || ""); 
-        setPrecoBasico(p.precoBasico || ""); 
-        setEnvioTransportadora(p.envioTransportadora ?? true); setPermiteRetirada(p.permiteRetirada ?? false); 
-        setCustoUnitario(p.custoUnitario || ""); setImagens(p.imagens || []); setDescricao(p.descricao || "");
-        setPeso(p.peso || ""); setComprimento(p.comprimento || "");
-        setLargura(p.largura || ""); setAltura(p.altura || "");
-        setRequisitos(p.requisitos || { pedeNome: false, pedeIdade: false, pedeData: false, pedeObs: false });
-        if (p.variacoes) {
-        setNomeVar1(p.nomeVar1 || ""); setNomeVar2(p.nomeVar2 || "");
-        const tab: any = {}; 
-        p.variacoes.forEach((v: any) => { 
-            const key = v.v2 ? `${v.v1}-${v.v2}` : v.v1;
-            tab[key] = { preco: v.preco, custo: v.custo, foto: v.foto || "",sku: v.sku || "" };
-        });
-        setTabelaPrecos(tab);
-        setOpcoesVar1([...new Set(p.variacoes.map((v:any) => v.v1))] as string[]);
-        setOpcoesVar2([...new Set(p.variacoes.map((v:any) => v.v2).filter((v:any) => v))] as string[]);
-        }
-    }} style={styles.btnSlim}>✏️ Editar</button>
-    
-    {/* Botão Ocultar/Mostrar */}
-    <button onClick={() => uid && updateDoc(doc(db,"lojistas",uid,"produtos",p.id), {ativo: !p.ativo})} style={styles.btnSlim}>{p.ativo ? "🚫 Ocultar" : "👁️ Mostrar"}</button>
-    
-    {/* Botão Imprimir Etiqueta (NOVA POSIÇÃO) */}
-    <button onClick={() => setListaParaImprimir([p])} style={{...styles.btnSlim, background: '#f59e0b', color: '#fff', fontSize: '12px'}}>🖨️ Etiqueta</button>
-    
-    <button onClick={() => {if(confirm("Excluir?") && uid) deleteDoc(doc(db,"lojistas",uid,"produtos",p.id))}} style={styles.btnDelete}>🗑️ Excluir</button>
-</div>
+                    <button onClick={() => uid && updateDoc(doc(db, "lojistas", uid, "produtos", p.id), { destaque: !p.destaque })} style={styles.btnSlim}>{p.destaque ? "⭐ Destacado" : "☆ Destacar"}</button>
+                    <button onClick={() => {
+                      // (sua lógica de editar mantida)
+                      setEditId(p.id); setNome(p.nome); setSku(p.sku || ""); setCategoria(p.categoria || ""); setSubcategoria(p.subcategoria || "");
+                      setPrecoBasico(p.precoBasico || "");
+                      setEnvioTransportadora(p.envioTransportadora ?? true); setPermiteRetirada(p.permiteRetirada ?? false);
+                      setCustoUnitario(p.custoUnitario || ""); setImagens(p.imagens || []); setDescricao(p.descricao || "");
+                      setPeso(p.peso || ""); setComprimento(p.comprimento || "");
+                      setLargura(p.largura || ""); setAltura(p.altura || "");
+                      setRequisitos(p.requisitos || { pedeNome: false, pedeIdade: false, pedeData: false, pedeObs: false });
+                      if (p.variacoes) {
+                        setNomeVar1(p.nomeVar1 || ""); setNomeVar2(p.nomeVar2 || "");
+                        const tab: any = {};
+                        p.variacoes.forEach((v: any) => {
+                          const key = v.v2 ? `${v.v1}-${v.v2}` : v.v1;
+                          tab[key] = { preco: v.preco, custo: v.custo, foto: v.foto || "", sku: v.sku || "" };
+                        });
+                        setTabelaPrecos(tab);
+                        setOpcoesVar1([...new Set(p.variacoes.map((v: any) => v.v1))] as string[]);
+                        setOpcoesVar2([...new Set(p.variacoes.map((v: any) => v.v2).filter((v: any) => v))] as string[]);
+                      }
+                    }} style={styles.btnSlim}>✏️ Editar</button>
+
+                    {/* Botão Ocultar/Mostrar */}
+                    <button onClick={() => uid && updateDoc(doc(db, "lojistas", uid, "produtos", p.id), { ativo: !p.ativo })} style={styles.btnSlim}>{p.ativo ? "🚫 Ocultar" : "👁️ Mostrar"}</button>
+
+                    {/* Botão Imprimir Etiqueta (NOVA POSIÇÃO) */}
+                    <button onClick={() => setListaParaImprimir([p])} style={{ ...styles.btnSlim, background: '#f59e0b', color: '#fff', fontSize: '12px' }}>🖨️ Etiqueta</button>
+
+                    <button onClick={() => { if (confirm("Excluir?") && uid) deleteDoc(doc(db, "lojistas", uid, "produtos", p.id)) }} style={styles.btnDelete}>🗑️ Excluir</button>
+                  </div>
                 </div>
               </div>
             );

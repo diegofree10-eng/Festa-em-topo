@@ -12,16 +12,16 @@ interface TabLucroRealProps {
   despesasVariaveis: number;
   formatarMoeda: (v: number) => string;
   // 🔥 Alterado para aceitar o objeto agrupado por ano
-  evolucaoMensal: Record<string, { mes: string, lucro: number, ano: string }[]>; 
+  evolucaoMensal: Record<string, { mes: string, lucro: number, ano: string }[]>;
 }
 
-export const TabLucroReal = ({ 
-  faturamento, 
-  custoTotal, 
-  lucroReal, 
-  despesaFreteLojista, 
-  despesasFixas, 
-  despesasVariaveis, 
+export const TabLucroReal = ({
+  faturamento,
+  custoTotal,
+  lucroReal,
+  despesaFreteLojista,
+  despesasFixas,
+  despesasVariaveis,
   formatarMoeda,
   evolucaoMensal
 }: TabLucroRealProps) => {
@@ -42,9 +42,9 @@ export const TabLucroReal = ({
     }
 
     // 2. Melhor Mês
-    const melhorMes = todosOsDados.reduce((prev, curr) => 
+    const melhorMes = todosOsDados.reduce((prev, curr) =>
       (curr.lucro > (prev?.lucro || 0) ? curr : prev), todosOsDados[0]);
-    
+
     // 3. Melhor Ano (Ajustado para garantir a soma)
     const lucrosPorAno = todosOsDados.reduce((acc: any, curr) => {
       const ano = curr.ano.toString(); // Garante que é string
@@ -54,7 +54,7 @@ export const TabLucroReal = ({
 
     // Filtra para garantir que não estamos comparando 'undefined'
     const anosArray = Object.entries(lucrosPorAno);
-    
+
     const melhorAno = anosArray.reduce((prev: any, curr: any) => {
       // curr[1] é o lucro, curr[0] é o ano
       return (curr[1] > prev.valor) ? { ano: curr[0], valor: curr[1] } : prev;
@@ -65,7 +65,7 @@ export const TabLucroReal = ({
 
   return (
     <div style={localStyles.container}>
-      
+
       {/* 1. CARDS DE RECORDE (GAMIFICAÇÃO) */}
       <div style={localStyles.kpiGrid}>
         <div style={localStyles.kpiCard}>
@@ -84,13 +84,13 @@ export const TabLucroReal = ({
       <div style={localStyles.kpiGrid}>
         <div style={localStyles.kpiCard}>
           <span style={localStyles.cardLabel}>Margem de Contribuição</span>
-          <h3 style={{...localStyles.kpiVal, color: margemPercentual > 30 ? '#10b981' : '#f59e0b'}}>
+          <h3 style={{ ...localStyles.kpiVal, color: margemPercentual > 30 ? '#10b981' : '#f59e0b' }}>
             {margemPercentual.toFixed(1)}%
           </h3>
         </div>
         <div style={localStyles.kpiCard}>
           <span style={localStyles.cardLabel}>Lucro Líquido Real</span>
-          <h3 style={{...localStyles.kpiVal, color: lucroReal >= 0 ? '#10b981' : '#ef4444'}}>
+          <h3 style={{ ...localStyles.kpiVal, color: lucroReal >= 0 ? '#10b981' : '#ef4444' }}>
             {formatarMoeda(lucroReal)}
           </h3>
         </div>
@@ -113,7 +113,7 @@ export const TabLucroReal = ({
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="mes" fontSize={12} />
               <YAxis fontSize={12} />
-              <Tooltip formatter={(value: number) => formatarMoeda(value)} />
+              <Tooltip formatter={(value: any) => formatarMoeda(Number(value) || 0)} />
               <Line type="monotone" dataKey="lucro" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} name="Lucro" />
             </LineChart>
           </ResponsiveContainer>
@@ -121,29 +121,29 @@ export const TabLucroReal = ({
       </div>
 
       {/* 4. DRE GERENCIAL */}
-      <div style={{...localStyles.dreCard, marginTop: '20px'}}>
+      <div style={{ ...localStyles.dreCard, marginTop: '20px' }}>
         <h4 style={localStyles.dreTitle}>📊 Demonstrativo de Resultados</h4>
         <div style={localStyles.row}><span>Receita Bruta Total</span> <span>{formatarMoeda(faturamento)}</span></div>
-        <div style={{...localStyles.row, color: '#ef4444'}}>
-          <span>(-) Custos Variáveis (Insumos + Fretes + Despesas Var.)</span> 
+        <div style={{ ...localStyles.row, color: '#ef4444' }}>
+          <span>(-) Custos Variáveis (Insumos + Fretes + Despesas Var.)</span>
           <span>- {formatarMoeda(totalCustosVariaveis)}</span>
         </div>
-        <div style={{...localStyles.row, background: '#f8fafc', fontWeight: 'bold', padding: '8px'}}>
-          <span>(=) Margem de Contribuição</span> 
+        <div style={{ ...localStyles.row, background: '#f8fafc', fontWeight: 'bold', padding: '8px' }}>
+          <span>(=) Margem de Contribuição</span>
           <span>{formatarMoeda(margemContribuicao)}</span>
         </div>
-        <div style={{...localStyles.row, color: '#ef4444', marginTop: '10px'}}>
-          <span>(-) Despesas Fixas (Aba Despesas)</span> 
+        <div style={{ ...localStyles.row, color: '#ef4444', marginTop: '10px' }}>
+          <span>(-) Despesas Fixas (Aba Despesas)</span>
           <span>- {formatarMoeda(despesasFixas)}</span>
         </div>
-        <div style={{...localStyles.row, borderTop: '2px solid #1e293b', marginTop: '10px', paddingTop: '10px', fontWeight: 'bold'}}>
-          <span>(=) LUCRO LÍQUIDO FINAL</span> 
+        <div style={{ ...localStyles.row, borderTop: '2px solid #1e293b', marginTop: '10px', paddingTop: '10px', fontWeight: 'bold' }}>
+          <span>(=) LUCRO LÍQUIDO FINAL</span>
           <span>{formatarMoeda(lucroReal)}</span>
         </div>
       </div>
 
       <div style={localStyles.auditoriaFooter}>
-        💡 <strong>Dica de Gestão:</strong> Sua Margem de Contribuição ideal deve estar acima de 30%. 
+        💡 <strong>Dica de Gestão:</strong> Sua Margem de Contribuição ideal deve estar acima de 30%.
         {margemPercentual < 30 && " Sua margem está baixa. Revise seu preço de venda ou o custo dos insumos."}
       </div>
     </div>

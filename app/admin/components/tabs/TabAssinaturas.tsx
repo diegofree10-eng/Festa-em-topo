@@ -10,8 +10,10 @@ import { buscarLojistas } from "../../../../hooks/useLojistas";
 import ModalPerfilLojista from "@/app/admin/components/ModalPerfilLojista";
 
 interface TabAssinaturasProps {
+  lojistas: any[];
   planos: any;
-  mostrarAviso: (msg: string, tipo?: string) => void;
+  // O "?" após 'tipo' torna ele opcional
+  mostrarAviso: (texto: string, tipo?: 'sucesso' | 'erro') => void;
 }
 
 export default function TabAssinaturas({ planos, mostrarAviso }: TabAssinaturasProps) {
@@ -58,7 +60,7 @@ export default function TabAssinaturas({ planos, mostrarAviso }: TabAssinaturasP
     const { docs, lastVisible } = await buscarLojistas(reset ? null : lastDoc, termo);
 
     // 2. Processa cada loja para verificar se o teste Ouro venceu
-    const docsProcessados = await Promise.all(docs.map(async (loja) => {
+    const docsProcessados = await Promise.all(docs.map(async (loja: any) => {
       const houveMudanca = await verificarEReverterPlano(loja);
 
       // Se houve mudança, atualizamos o objeto localmente para refletir o "limpo" na tela
@@ -109,7 +111,7 @@ export default function TabAssinaturas({ planos, mostrarAviso }: TabAssinaturasP
         "dadosLoja.isTeste": false
       });
       carregarDados(busca, true);
-      mostrarAviso(`Ciclo alterado para ${novoCiclo}!`);
+      mostrarAviso(`Ciclo alterado para ${novoCiclo}!`, "sucesso");
     } catch (e) { mostrarAviso("Erro ao atualizar ciclo.", "erro"); }
   }
 
@@ -127,7 +129,7 @@ export default function TabAssinaturas({ planos, mostrarAviso }: TabAssinaturasP
           "sistema.tsVencimentoTeste": null,
           "sistema.isTesteOuroAtivo": false
         });
-        mostrarAviso("Período de teste Ouro desativado.");
+        mostrarAviso("Período de teste Ouro desativado.", "sucesso");
       } else {
         // ATIVAR: busca dias, atualiza principal e cria registro no histórico
         const configSnap = await getDoc(doc(db, "configuracoes", "sistema"));
@@ -152,7 +154,7 @@ export default function TabAssinaturas({ planos, mostrarAviso }: TabAssinaturasP
           status: "ativado"
         });
 
-        mostrarAviso(`Teste Ouro ativado por ${dias} dias!`);
+        mostrarAviso(`Teste Ouro ativado por ${dias} dias!`, "sucesso");
       }
       carregarDados("", true);
     } catch (error) {
@@ -175,7 +177,7 @@ export default function TabAssinaturas({ planos, mostrarAviso }: TabAssinaturasP
         "dadosLoja.tsVencimentoLoja": Timestamp.fromDate(dataAtual),
         "dadosLoja.dsStatusLoja": "ativo"
       });
-      mostrarAviso(`Assinatura renovada para ${dataAtual.toLocaleDateString()}!`);
+      mostrarAviso(`Assinatura renovada para ${dataAtual.toLocaleDateString()}!`, "sucesso");
       carregarDados(busca, true);
     } catch (e) {
       mostrarAviso("Erro ao renovar.", "erro");
@@ -191,14 +193,14 @@ export default function TabAssinaturas({ planos, mostrarAviso }: TabAssinaturasP
     try {
       if (acaoTipo === "excluir") {
         await deleteDoc(doc(db, "lojistas", lojaSelecionada.id));
-        mostrarAviso("Lojista excluído com sucesso!");
+       mostrarAviso("Lojista excluído com sucesso!", "sucesso");
       } else if (acaoTipo === "limpar") {
         // Exemplo: Limpar dados de assinatura
         await updateDoc(doc(db, "lojistas", lojaSelecionada.id), {
           "dadosLoja.dsStatusLoja": "limpo",
           "sistema.dsPlanoTeste": ""
         });
-        mostrarAviso("Dados do lojista limpos!");
+        mostrarAviso("Dados do lojista limpos!", "sucesso");
       }
       setModalAberto(false);
       setConfirmacaoTexto("");

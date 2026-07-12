@@ -1,29 +1,46 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { db } from "@/lib/firebase"; 
+import { db } from "@/lib/firebase";
 import { collection, onSnapshot, query, where, getDocs, limit } from "firebase/firestore";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ShoppingCart, ChevronLeft } from "lucide-react";
 // IMPORTAR O HOOK DO CARRINHO
-import { useCart } from "@/app/context/CartContext"; 
+import { useCart } from "@/app/context/CartContext";
+import { Produto } from '@/types';
+
+interface DadosLoja {
+  slug: string;
+  logoUrl: string;
+  celular: string;
+  nomeLoja: string;
+  lojaAberta: boolean;
+  tema: any;
+}
 
 export default function PaginaCategoria() {
   // 🎯 CORREÇÃO DO ERRO PRINCIPAL: Removida a atribuição duplicada que travava o runtime
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   // EXTRAIR AS FUNÇÕES DO CONTEXTO
-  const { cart } = useCart(); 
-  
+  const { cart } = useCart() as { cart: Produto[] };
+
   const categoriaAtiva = searchParams.get('cat');
-  const subcategoriaAtiva = searchParams.get('sub'); 
+  const subcategoriaAtiva = searchParams.get('sub');
   const lojistaSlug = params.lojista as string;
 
-  const [produtos, setProdutos] = useState([]);
+  const [produtos, setProdutos] = useState<Produto[]>([]);
   // FLAG lojaAberta NO ESTADO INICIAL
-  const [dadosLoja, setDadosLoja] = useState({ slug: "", logoUrl: "", celular: "", nomeLoja: "", lojaAberta: true, tema: {} });
-  const [lojistaId, setLojistaId] = useState(null);
+  const [dadosLoja, setDadosLoja] = useState<DadosLoja>({
+    slug: "",
+    logoUrl: "",
+    celular: "",
+    nomeLoja: "",
+    lojaAberta: true,
+    tema: {}
+  });
+  const [lojistaId, setLojistaId] = useState<string | null>(null);
 
   const config = {
     nomeLoja: dadosLoja.nomeLoja,
@@ -76,8 +93,22 @@ export default function PaginaCategoria() {
     }
 
     const unsubProd = onSnapshot(qProd, (snapshot) => {
-      setProdutos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+  // Criamos uma lista tipada como Produto[]
+  const listaProdutos: Produto[] = snapshot.docs.map(doc => {
+    const data = doc.data();
+    
+    // Retornamos um objeto que respeita a sua interface Produto
+    return {
+      id: doc.id,
+      nome: data.nome || "Produto sem nome",
+      preco: data.preco || 0,
+      qty: 0, // Inicia com zero no carregamento
+      ...data // Espalha o restante dos dados caso existam outros campos
+    } as Produto;
+  });
+
+  setProdutos(listaProdutos);
+});
 
     return () => unsubProd();
   }, [lojistaId, categoriaAtiva, subcategoriaAtiva]);
@@ -88,7 +119,7 @@ export default function PaginaCategoria() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: config.corFundoSite, fontFamily: 'sans-serif' }}>
-      
+
       <header style={headerStyles.headerContainer}>
         <div style={{ backgroundColor: config.corDestaque, height: '60px', width: '100%' }}></div>
         <div style={{ backgroundColor: config.corSecundaria, height: '55px', width: '100%', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}></div>
@@ -103,7 +134,7 @@ export default function PaginaCategoria() {
                 {dadosLoja.logoUrl ? (
                   <img src={dadosLoja.logoUrl} style={headerStyles.logoImg} alt="Logo" />
                 ) : (
-                  <span style={{fontSize: '10px', color: '#333'}}>Logo</span>
+                  <span style={{ fontSize: '10px', color: '#333' }}>Logo</span>
                 )}
               </div>
               <span style={headerStyles.nomeLojaText}>
@@ -143,31 +174,31 @@ export default function PaginaCategoria() {
 
       <div style={{ padding: '0 15px 120px' }}>
         <div className="grid-layout">
-          {produtos.map((prod: any) => (
-            <div 
-              key={prod.id} 
+          {produtos.map((prod: Produto) => (
+            <div
+              key={prod.id}
               className="card-produto"
               onClick={() => navegarParaProduto(prod.id)}
               style={{ textAlign: 'center', backgroundColor: 'white', padding: '10px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer', transition: 'transform 0.2s' }}
             >
               <img src={prod.capa || "https://via.placeholder.com/500"} style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', borderRadius: '5px' }} alt={prod.nome} />
               <p style={{ margin: '10px 0 0', fontSize: '13px', fontWeight: 'bold', color: config.corTextoCard }}>{prod.nome}</p>
-              
+
               <p style={{ margin: '5px 0', color: config.corTextoCard, fontWeight: 'bold', fontSize: '16px' }}>
                 R$ {prod.precoBasico || "0,00"}
               </p>
-              
+
               {/* 🔥 BOTÃO DINÂMICO REESTRUTURADO PARA SINALIZAR O MODO VITRINE */}
-              <button 
-                style={{ 
-                  backgroundColor: dadosLoja.lojaAberta === false ? '#94a3b8' : config.corDestaque, 
-                  border: 'none', 
-                  width: '100%', 
-                  padding: '8px', 
-                  borderRadius: '5px', 
-                  fontWeight: 'bold', 
-                  cursor: 'pointer', 
-                  color: 'white', 
+              <button
+                style={{
+                  backgroundColor: dadosLoja.lojaAberta === false ? '#94a3b8' : config.corDestaque,
+                  border: 'none',
+                  width: '100%',
+                  padding: '8px',
+                  borderRadius: '5px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  color: 'white',
                   fontSize: '12px',
                   transition: 'background-color 0.2s'
                 }}
@@ -180,18 +211,18 @@ export default function PaginaCategoria() {
 
         {produtos.length === 0 && (
           <div style={{ textAlign: 'center', marginTop: '50px' }}>
-             <p style={{ color: '#999' }}>Nenhum produto encontrado nesta seleção.</p>
+            <p style={{ color: '#999' }}>Nenhum produto encontrado nesta seleção.</p>
           </div>
         )}
       </div>
 
       <div style={{ position: 'fixed', bottom: 0, width: '100%', backgroundColor: 'white', padding: '15px', borderTop: '1px solid #eee', textAlign: 'center', zIndex: 10 }}>
-         <button 
-           onClick={() => router.push(`/${lojistaSlug}`)}
-           style={{ backgroundColor: 'transparent', border: `1px solid ${config.corTextoCard}`, color: config.corTextoCard, padding: '10px 20px', borderRadius: '20px', fontWeight: 'bold', cursor: 'pointer' }}
-         >
-           ← Voltar ao Início
-         </button>
+        <button
+          onClick={() => router.push(`/${lojistaSlug}`)}
+          style={{ backgroundColor: 'transparent', border: `1px solid ${config.corTextoCard}`, color: config.corTextoCard, padding: '10px 20px', borderRadius: '20px', fontWeight: 'bold', cursor: 'pointer' }}
+        >
+          ← Voltar ao Início
+        </button>
       </div>
 
       <a href={config.linkWhatsapp} target="_blank" rel="noreferrer" style={{ position: 'fixed', bottom: '85px', right: '20px', backgroundColor: '#25D366', color: 'white', width: '50px', height: '50px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', boxShadow: '0 2px 10px rgba(0,0,0,0.2)', textDecoration: 'none', zIndex: 99 }}>

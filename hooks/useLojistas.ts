@@ -1,4 +1,14 @@
-import { collection, query, orderBy, limit, startAfter, getDocs, where, QueryDocumentSnapshot } from "firebase/firestore";
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  limit, 
+  startAfter, 
+  getDocs, 
+  where, 
+  QueryDocumentSnapshot, 
+  QueryConstraint // Importe isso
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export const buscarLojistas = async (lastDoc: QueryDocumentSnapshot | null, termoBusca: string) => {
@@ -12,9 +22,8 @@ export const buscarLojistas = async (lastDoc: QueryDocumentSnapshot | null, term
       limit(20)
     );
   } else {
-    // CRIAMOS UM ARRAY DE ARGUMENTOS DINÂMICO
-    const queryArgs = [
-      collection(db, "lojistas"),
+    // Definimos explicitamente o tipo do array como QueryConstraint[]
+    const queryArgs: QueryConstraint[] = [
       orderBy("dataCadastro", "desc"),
       limit(10)
     ];
@@ -24,7 +33,8 @@ export const buscarLojistas = async (lastDoc: QueryDocumentSnapshot | null, term
       queryArgs.push(startAfter(lastDoc));
     }
 
-    q = query(...queryArgs); // O spread operator (...) passa os argumentos um por um
+    // Passamos a coleção como primeiro argumento e o spread das restrições depois
+    q = query(collection(db, "lojistas"), ...queryArgs);
   }
 
   const snapshot = await getDocs(q);

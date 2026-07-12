@@ -33,8 +33,8 @@ export default function TabFinanceiro({ lojistas }: { lojistas: any[] }) {
         <thead>
           <tr style={styles.thRow}>
             <th style={styles.th}>NOME DA LOJA</th>
-            <th style={styles.th} style={{textAlign: 'right'}}>LUCRO LÍQUIDO REAL</th>
-            <th style={styles.th} style={{textAlign: 'right'}}>TICKET MÉDIO</th>
+            <th style={{ ...styles.th, textAlign: 'right' }}>LUCRO LÍQUIDO REAL</th>
+            <th style={{ ...styles.th, textAlign: 'right' }}>TICKET MÉDIO</th>
           </tr>
         </thead>
         <tbody>

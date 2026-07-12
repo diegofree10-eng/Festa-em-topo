@@ -7,7 +7,6 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { onAuthStateChanged } from "firebase/auth";
 import { FiMessageSquare, FiClock, FiBell, FiCalendar, FiActivity, FiImage, FiUploadCloud, FiTrash2 } from "react-icons/fi";
 import UpgradeModal from "@/app/admin/components/UpgradeModal";
-// --- IMPORTAÇÃO DOS MODAIS ---
 import CupomModal from "@/app/admin/components/CupomModal";
 import HorarioModal from "@/app/admin/components/HorarioModal";
 
@@ -44,6 +43,35 @@ const aplicarMascara = (valor: string, tipo: string) => {
 };
 
 export default function AdminConfig() {
+
+  // --- INTERFACE ---
+  interface ConfigState {
+    dadosPessoais: { [key: string]: any };
+    dadosLoja: { [key: string]: any };
+    banners: { [key: string]: any };
+    pagamentos: { [key: string]: any };
+    aparencia: { [key: string]: any };
+    sistema: { [key: string]: any };
+    historicoMensagens: any[];
+    financeiro: { [key: string]: any };
+    redesSociais: any[];
+    historicoPagamentos?: any[];
+  }
+
+  // --- ESTADOS ÚNICOS ---
+  const [config, setConfig] = useState<ConfigState>({
+    dadosPessoais: { dsNomeResponsavel: "", dsCpfResponsavel: "", dsEmailResponsavel: "", dsRuaResponsavel: "", nrNumeroResponsavel: "", dsBairroResponsavel: "", dsCidadeResponsavel: "", dsUfResponsavel: "", dsCepResponsavel: "", dsTelResponsavel: "", dsRole: "" },
+    dadosLoja: { dsNomeLoja: "Nova Loja", dsRuaLoja: "", nrNumeroLoja: "", dsCepLoja: "", dsBairroLoja: "", dsCidadeLoja: "", dsUfLoja: "", nrCnpjCpfLoja: "", dsStatusLoja: "ativo", dsPlanoLoja: "Bronze", nrWhatssapLoja: "", dsSeguimentoLoja: "", dsSlug: "", dsLogoLoja: "", redesSociais: [] },
+    banners: { dsDesktop: [], dsMobile: [], dsBanner1: "", dsBanner2: "", dsBanner3: "", dsLinkBanner1: "", dsLinkBanner2: "", dsLinkBanner3: "" },
+    pagamentos: { dsChavePix: "", dsMercadoPago: { publicKey: "", accessToken: "", ativo: false }, dsPagSeguro: { token: "", email: "", ativo: false } },
+    aparencia: { dscorFundo: "#f8fafc", dscorPrincipal: "#FF8C00", dscorSecundaria: "#F5F5DC", dscorTextoCard: "#1e293b" },
+    sistema: { isFreteGratisAtivo: false, vlFreteGratisMinimo: 0, dsTokenMelhorEnvio: "", dstransportadoras: { correios: true, jadlog: true, azul: true, latam: true }, cupons: {}, horarios: {}, isLojaAberta: true },
+    historicoMensagens: [],
+    financeiro: { vlLucroReal: 0, vlMetaFaturamentoMensal: 0, vlTicketMedio: 0 },
+    redesSociais: [],
+    historicoPagamentos: []
+  });
+
   const [uid, setUid] = useState<string | null>(null);
   const [abaAtiva, setAbaAtiva] = useState("pessoal");
   const [dadosAntigos, setDadosAntigos] = useState<any>({});
@@ -56,26 +84,11 @@ export default function AdminConfig() {
 
   const [showCupomModal, setShowCupomModal] = useState(false);
   const [showHorarioModal, setShowHorarioModal] = useState(false);
-  const [unsubMensagens, setUnsubMensagens] = useState<any>(null);
-
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-
-  const [config, setConfig] = useState<any>({
-    dadosPessoais: { dsNomeResponsavel: "", dsCpfResponsavel: "", dsEmailResponsavel: "", dsRuaResponsavel: "", nrNumeroResponsavel: "", dsBairroResponsavel: "", dsCidadeResponsavel: "", dsUfResponsavel: "", dsCepResponsavel: "", dsTelResponsavel: "", dsRole: "" },
-    dadosLoja: { dsNomeLoja: "Nova Loja", dsRuaLoja: "", nrNumeroLoja: "", dsCepLoja: "", dsBairroLoja: "", dsCidadeLoja: "", dsUfLoja: "", nrCnpjCpfLoja: "", dsStatusLoja: "ativo", dsPlanoLoja: "Bronze", nrWhatssapLoja: "", dsSeguimentoLoja: "", dsSlug: "", dsLogoLoja: "", redesSociais: [] },
-    banners: { dsDesktop: [], dsMobile: [], dsBanner1: "", dsBanner2: "", dsBanner3: "", dsLinkBanner1: "", dsLinkBanner2: "", dsLinkBanner3: "" },
-    pagamentos: { dsChavePix: "", dsMercadoPago: { publicKey: "", accessToken: "", ativo: false }, dsPagSeguro: { token: "", email: "", ativo: false } },
-    aparencia: { dscorFundo: "#f8fafc", dscorPrincipal: "#FF8C00", dscorSecundaria: "#F5F5DC", dscorTextoCard: "#1e293b" },
-    sistema: { isFreteGratisAtivo: false, vlFreteGratisMinimo: 0, dsTokenMelhorEnvio: "", dstransportadoras: { correios: true, jadlog: true, azul: true, latam: true }, cupons: {}, horarios: {}, isLojaAberta: true },
-    historicoMensagens: [],
-    financeiro: { vlLucroReal: 0, vlMetaFaturamentoMensal: 0, vlTicketMedio: 0 },
-    redesSociais: []
-  });
 
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [novaLogo, setNovaLogo] = useState<File | null>(null);
-
   const [arquivoBanner1, setArquivoBanner1] = useState<File | null>(null);
   const [arquivoBanner2, setArquivoBanner2] = useState<File | null>(null);
   const [arquivoBanner3, setArquivoBanner3] = useState<File | null>(null);
@@ -84,11 +97,11 @@ export default function AdminConfig() {
     const unsubMensagens = onSnapshot(
       query(
         collection(db, "lojistas", uid || "none", "mensagens"),
-        orderBy("dataEnvio", "desc") // MUDOU DE "data" PARA "dataEnvio"
+        orderBy("dataEnvio", "desc")
       ),
       (snap) => {
         const mensagens = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setConfig((prev: any) => ({ ...prev, historicoMensagens: mensagens }));
+        setConfig((prev: ConfigState) => ({ ...prev, historicoMensagens: mensagens }));
       }
     );
 
@@ -105,7 +118,7 @@ export default function AdminConfig() {
             if (snap.exists()) {
               const dados = snap.data();
               setDadosAntigos(dados);
-              setConfig((prev: any) => ({ ...prev, ...dados }));
+              setConfig((prev: ConfigState) => ({ ...prev, ...dados }));
               if (dados.mensagemMaster && !dados.mensagemMaster.lida) setAvisoPopup(dados.mensagemMaster);
             }
           } catch (error) { console.error(error); } finally { setLoading(false); }
@@ -161,7 +174,7 @@ export default function AdminConfig() {
 
       if (!data.erro) {
         if (tipo === 'loja') {
-          setConfig(prev => ({
+          setConfig((prev: ConfigState) => ({
             ...prev,
             dadosLoja: {
               ...prev.dadosLoja,
@@ -172,7 +185,8 @@ export default function AdminConfig() {
             }
           }));
         } else {
-          setConfig(prev => ({
+
+          setConfig((prev: ConfigState) => ({
             ...prev,
             dadosPessoais: {
               ...prev.dadosPessoais,
@@ -918,7 +932,7 @@ export default function AdminConfig() {
           <section>
             <h3 style={styles.h3}>Personalização Visual do Catálogo</h3>
             {!masterLiberou("temPersonalizacao") ? (
-              <div style={styles.lockNotice}>🔒 Bloqueado no plano {config.plano}.</div>
+              <div style={styles.lockNotice}>🔒 Bloqueado no plano {config.dadosLoja.dsPlanoLoja}.</div>
             ) : (
               <>
                 <p style={styles.helpText}>Ajuste as cores principais do seu site para combinar com sua marca.</p>
@@ -1132,8 +1146,8 @@ export default function AdminConfig() {
               </div>
               {/* Histórico de Pagamentos */}
               <div style={styles.msgContainer}>
-                {config.historicoPagamentos?.length > 0 ? (
-                  config.historicoPagamentos.map((pag: any) => (
+                {(config.historicoPagamentos || []).length > 0 ? (
+                  (config.historicoPagamentos || []).map((pag: any) => (
                     <div key={pag.id} style={{
                       display: 'flex', justifyContent: 'space-between', padding: '15px',
                       borderBottom: '1px solid #f1f5f9', alignItems: 'center'
@@ -1158,8 +1172,7 @@ export default function AdminConfig() {
                   ))
                 ) : (
                   <div style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>Nenhum histórico encontrado.</div>
-                )}
-              </div>
+                )}              </div>
 
             </div>
             {/* Filtros */}
@@ -1174,8 +1187,8 @@ export default function AdminConfig() {
             {/* Lista de Pagamentos */}
 
             <div style={styles.msgContainer}>
-              {config.historicoPagamentos?.length > 0 ? (
-                config.historicoPagamentos.map((pag: any) => (
+              {(config.historicoPagamentos || []).length > 0 ? (
+                (config.historicoPagamentos || []).map((pag: any) => (
                   <div key={pag.id} style={{
                     display: 'flex', justifyContent: 'space-between', padding: '15px',
                     borderBottom: '1px solid #f1f5f9', alignItems: 'center'
@@ -1188,7 +1201,6 @@ export default function AdminConfig() {
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontWeight: 'bold' }}>R$ {pag.vlAssinaturaLojista?.toFixed(2)}</div>
-
                     </div>
                   </div>
                 ))
@@ -1215,8 +1227,21 @@ export default function AdminConfig() {
             </button>
           </section>
         )}
-        <CupomModal show={showCupomModal} onClose={() => setShowCupomModal(false)} cupons={config.sistema.cupons} setCupons={(n) => setConfig({ ...config, sistema: { ...config.sistema, cupons: n } })} />
-        <HorarioModal show={showHorarioModal} onClose={() => setShowHorarioModal(false)} horarios={config.sistema.horarios} setHorarios={(n) => setConfig({ ...config, sistema: { ...config.sistema, horarios: n } })} />
+        <CupomModal
+          show={showCupomModal}
+          onClose={() => setShowCupomModal(false)}
+          cupons={config.sistema.cupons}
+          setCupons={(n) => setConfig({ ...config, sistema: { ...config.sistema, cupons: n } })}
+          limiteCupons={planosConfig?.[config.dadosLoja.dsPlanoLoja]?.limiteCupons || 0}
+          planoAtivo={config.dadosLoja.dsPlanoLoja || "Bronze"}
+        />
+
+        <HorarioModal
+          show={showHorarioModal}
+          onClose={() => setShowHorarioModal(false)}
+          horarios={config.sistema.horarios}
+          setHorarios={(n) => setConfig({ ...config, sistema: { ...config.sistema, horarios: n } })}
+        />
         <UpgradeModal
           show={showUpgradeModal}
           onClose={() => setShowUpgradeModal(false)}

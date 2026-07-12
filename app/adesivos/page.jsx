@@ -1,6 +1,3 @@
-versão nova do catalogo
-
-
 "use client";
 import React, { useState } from 'react';
 

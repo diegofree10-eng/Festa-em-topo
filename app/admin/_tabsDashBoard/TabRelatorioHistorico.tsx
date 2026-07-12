@@ -9,19 +9,19 @@ interface TabRelatorioHistoricoProps {
 }
 
 export const TabRelatorioHistorico = ({ pedidos, formatarMoeda }: TabRelatorioHistoricoProps) => {
-  
+
   const relatorio = useMemo(() => {
     const resumoAnual: Record<string, { faturamento: number, lucro: number, pedidos: number }> = {};
 
     pedidos.forEach(p => {
       if (p.status?.toLowerCase() !== 'concluído' || p.devolvido) return;
-      
+
       const data = new Date(p.data);
       const ano = data.getFullYear().toString();
       const valor = Number(p.financeiro?.total || 0);
-      
+
       // Simulação rápida de lucro (ajuste conforme sua regra de custo)
-      const lucroEstimado = valor * 0.4; 
+      const lucroEstimado = valor * 0.4;
 
       if (!resumoAnual[ano]) resumoAnual[ano] = { faturamento: 0, lucro: 0, pedidos: 0 };
       resumoAnual[ano].faturamento += valor;
@@ -35,7 +35,7 @@ export const TabRelatorioHistorico = ({ pedidos, formatarMoeda }: TabRelatorioHi
   return (
     <div style={{ padding: '20px' }}>
       <h2 style={{ color: '#1e293b' }}>📊 Evolução Histórica da Empresa</h2>
-      
+
       {/* Cards de Performance Geral */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
         <div style={cardStyle}>
@@ -61,7 +61,7 @@ export const TabRelatorioHistorico = ({ pedidos, formatarMoeda }: TabRelatorioHi
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="ano" />
               <YAxis />
-              <Tooltip formatter={(value: number) => formatarMoeda(value)} />
+              <Tooltip formatter={(value: any) => formatarMoeda(Number(value) || 0)} />
               <Legend />
               <Bar dataKey="faturamento" fill="#3b82f6" name="Faturamento" />
               <Bar dataKey="lucro" fill="#10b981" name="Lucro" />

@@ -3,17 +3,17 @@
 import React, { useState, useEffect, useRef, CSSProperties } from "react";
 import dynamic from 'next/dynamic';
 import { useRouter, usePathname } from "next/navigation";
-import { auth, db } from "@/lib/firebase"; 
-import { doc, getDoc, onSnapshot, collection, query, orderBy } from "firebase/firestore"; 
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc, onSnapshot, collection, query, orderBy } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 
-import Sidebar from "./Sidebar"; 
-import { DashboardGestao } from "./DashboardGestao"; 
-import { DashboardBronze } from "./DashboardBronze"; 
+import Sidebar from "./Sidebar";
+import { DashboardGestao } from "./DashboardGestao";
+import { DashboardBronze } from "./DashboardBronze";
 import CadastroProdutos from "./produtos/page";
-import Pedidos from "./pedidos/page"; 
-import AdminConfig from "./config/page"; 
-import GestaoGeral from "./components/GestaoGeral"; 
+import Pedidos from "./pedidos/page";
+import AdminConfig from "./config/page";
+import GestaoGeral from "./components/GestaoGeral";
 
 function AdminContent() {
   const [telaAtiva, setTelaAtiva] = useState('dash');
@@ -23,14 +23,14 @@ function AdminContent() {
   const [dadosLojista, setDadosLojista] = useState<any>(null);
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [lojistaIdReal, setLojistaIdReal] = useState<string | null>(null);
-  
+
   const router = useRouter();
   const pathname = usePathname();
-  
+
   const unsubLojaRef = useRef<(() => void) | null>(null);
   const unsubPedidosRef = useRef<(() => void) | null>(null);
 
- useEffect(() => {
+  useEffect(() => {
     if (isLoggingOut) return;
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -51,7 +51,7 @@ function AdminContent() {
 
           if (userData.lojaId) {
             console.log("ID da loja encontrado:", userData.lojaId); // SE ISSO FOR UNDEFINED, O ERRO É AQUI
-            
+
             if (unsubLojaRef.current) unsubLojaRef.current();
             if (unsubPedidosRef.current) unsubPedidosRef.current();
 
@@ -90,7 +90,7 @@ function AdminContent() {
     setIsLoggingOut(true);
     if (unsubLojaRef.current) unsubLojaRef.current();
     if (unsubPedidosRef.current) unsubPedidosRef.current();
-    
+
     try {
       await signOut(auth);
       window.location.replace("/login");
@@ -103,24 +103,24 @@ function AdminContent() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
-      <Sidebar telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} onLogout={handleLogout}/>
+      <Sidebar telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} onLogout={handleLogout} />
       <main style={{ flex: 1, overflowY: "auto", height: "100vh", padding: "20px" }}>
-        
+
         {/* DASHBOARD */}
         {telaAtiva === 'dash' && dadosLojista && (
           (dadosLojista.plano === 'Ouro' || dadosLojista.plano === 'Prata') ? (
-            <DashboardGestao pedidos={pedidos} lojistaId={lojistaIdReal} /> 
+            <DashboardGestao pedidos={pedidos} lojistaId={lojistaIdReal || undefined} />
           ) : (
-            <DashboardBronze pedidos={pedidos} dadosLojista={dadosLojista} />
+            <DashboardBronze pedidos={pedidos} dadosLojista={dadosLojista || undefined} />
           )
         )}
-        
+
         {/* OUTRAS TELAS */}
         {telaAtiva === 'produtos' && <CadastroProdutos />}
         {telaAtiva === 'pedidos' && lojistaIdReal && <Pedidos pedidos={pedidos} db={db} lojistaIdApp={lojistaIdReal} />}
         {telaAtiva === 'config' && <AdminConfig />}
         {telaAtiva === 'gestao-geral' && userRole === 'master' && <GestaoGeral />}
-        
+
       </main>
     </div>
   );

@@ -400,7 +400,7 @@ const inteligencia = useDashboardInteligencia(
       // 1. Extração segura do nome do cliente (trata objeto, string ou nulo)
       let clienteNomeStr = "";
       if (p.cliente && typeof p.cliente === 'object') {
-        clienteNomeStr = String(p.cliente.nome || "");
+        clienteNomeStr = String((p.cliente as any).nome || "");
       } else {
         clienteNomeStr = String(p.cliente || "");
       }

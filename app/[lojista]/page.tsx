@@ -1,31 +1,38 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { db } from "@/lib/firebase"; 
+import { db } from "@/lib/firebase";
 import { collection, onSnapshot, query, where, getDocs, limit } from "firebase/firestore";
 import { useParams, useRouter } from "next/navigation";
 import { FiInstagram, FiFacebook, FiYoutube, FiGlobe, FiSearch, FiChevronLeft, FiChevronRight, FiMenu, FiX, FiChevronDown, FiChevronUp } from "react-icons/fi";
 import { FaTiktok } from "react-icons/fa";
 // 1. IMPORTAR O HOOK DO CARRINHO
-import { useCart } from "@/app/context/CartContext"; 
+import { useCart } from "@/app/context/CartContext";
+import { Produto } from "@/types";
+
+interface Categoria {
+  id: string;
+  nome?: string;
+  [key: string]: any;
+}
 
 export default function PaginaFinal() {
   const params = useParams();
   const router = useRouter();
-  
-  // 2. EXTRAIR AS FUNÇÕES DO CONTEXTO
-  const { cart } = useCart(); 
 
-  const [produtos, setProdutos] = useState([]);
+  // 2. EXTRAIR AS FUNÇÕES DO CONTEXTO
+  const { cart } = useCart() as { cart: Produto[] };
+
+  const [produtos, setProdutos] = useState<Produto[]>([]);
   const [termoBusca, setTermoBusca] = useState("");
-  const [categoriasFirebase, setCategoriasFirebase] = useState([]);
+  const [categoriasFirebase, setCategoriasFirebase] = useState<Categoria[]>([]);
   const [dadosLoja, setDadosLoja] = useState({ slug: "", logoUrl: "", celular: "", nomeLoja: "", redesSociais: [], tema: {}, banner1: "", banner2: "", banner3: "", linkBanner1: "", linkBanner2: "", linkBanner3: "" });
-  const [lojistaId, setLojistaId] = useState(null);
+  const [lojistaId, setLojistaId] = useState<string | null>(null);
 
   const [subCatAberta, setSubCatAberta] = useState(null);
   const [bannerAtivo, setBannerAtivo] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // ✅ ESTADOS PARA CONTROLE DO MENU MOBILE SIDEBAR
   const [menuMobileAberto, setMenuMobileAberto] = useState(false);
   const [catMobileExpandida, setCatMobileExpandida] = useState<string | null>(null);
@@ -51,7 +58,7 @@ export default function PaginaFinal() {
       const slugUrl = params.slug || params.lojista;
       const q = query(collection(db, "lojistas"), where("slug", "==", slugUrl), limit(1));
       const querySnapshot = await getDocs(q);
-      
+
       if (!querySnapshot.empty) {
         const docSnap = querySnapshot.docs[0];
         setLojistaId(docSnap.id);
@@ -82,21 +89,28 @@ export default function PaginaFinal() {
     if (!lojistaId) return;
 
     const unsubCat = onSnapshot(collection(db, `lojistas/${lojistaId}/categorias`), (snapshot) => {
-      setCategoriasFirebase(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const cats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Categoria[];
+      setCategoriasFirebase(cats);
     });
 
     const unsubProd = onSnapshot(collection(db, `lojistas/${lojistaId}/produtos`), (snapshot) => {
-      const todos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const ativos = todos.filter((p: any) => p.ativo === true);
+      // Transformamos os docs em um array de Produto[]
+      const todos: Produto[] = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Produto));
+
+      // O filtro continua funcionando normalmente com a tipagem correta
+      const ativos = todos.filter((p) => p.ativo === true);
       setProdutos(ativos);
     });
 
     resetarTemporizadorBanner();
 
-    return () => { 
-      unsubCat(); 
-      unsubProd(); 
-      if (timerRef.current) clearInterval(timerRef.current); 
+    return () => {
+      unsubCat();
+      unsubProd();
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [lojistaId]);
 
@@ -129,23 +143,23 @@ export default function PaginaFinal() {
     router.push(`/${lojista}/PagCategoria?cat=${encodeURIComponent(catNome)}&sub=${encodeURIComponent(subNome)}`);
   };
 
-  const produtosParaExibir = termoBusca 
+  const produtosParaExibir = termoBusca
     ? produtos.filter((p: any) => p.nome.toLowerCase().includes(termoBusca.toLowerCase()))
     : produtos.filter((p: any) => p.destaque === true);
 
   const config = {
     nomeLoja: dadosLoja.nomeLoja || "Carregando...",
-    corDestaque: (dadosLoja.tema as any)?.corPrincipal || "#FFCC80",    
-    corSecundaria: (dadosLoja.tema as any)?.corSecundaria || "#FDF5EB", 
-    corFundoSite: (dadosLoja.tema as any)?.corFundo || "#FFF9F2",   
-    corTextoCard: (dadosLoja.tema as any)?.corTextoCard || "#f30c0c", 
+    corDestaque: (dadosLoja.tema as any)?.corPrincipal || "#FFCC80",
+    corSecundaria: (dadosLoja.tema as any)?.corSecundaria || "#FDF5EB",
+    corFundoSite: (dadosLoja.tema as any)?.corFundo || "#FFF9F2",
+    corTextoCard: (dadosLoja.tema as any)?.corTextoCard || "#f30c0c",
     linkWhatsapp: `https://wa.me/${dadosLoja.celular?.replace(/\D/g, '')}`,
-    backgroundPadrao: "white"  
+    backgroundPadrao: "white"
   };
 
   return (
     <div style={{ margin: 0, padding: 0, width: '100%', overflowX: 'hidden', backgroundColor: config.corFundoSite, fontFamily: 'sans-serif', position: 'relative' }}>
-      
+
       <style jsx global>{`
         html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; overflow-x: hidden !important; position: relative; }
         * { box-sizing: border-box !important; }
@@ -155,7 +169,7 @@ export default function PaginaFinal() {
 
       {/* --- HEADER DESKTOP INTELLIGENT --- */}
       <div className="desktop-header" style={{ position: 'relative', width: '100%', minHeight: '115px' }}>
-        
+
         {/* Camada Estática das Cores de Fundo */}
         <div style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 1, display: 'flex', flexDirection: 'column' }}>
           <div style={{ backgroundColor: config.corDestaque, height: '60px', width: '100%' }}></div>
@@ -164,7 +178,7 @@ export default function PaginaFinal() {
 
         {/* BARRA LARANJA: Alinhamento de 3 colunas independentes */}
         <div style={{ position: 'absolute', width: '100%', height: '60px', top: 0, left: 0, zIndex: 25, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 40px' }}>
-          
+
           {/* ✅ BOTÃO SANDUÍCHE (VISÍVEL APENAS NO MOBILE/TABLET) */}
           <button className="botao-menu-mobile" onClick={() => setMenuMobileAberto(true)} aria-label="Abrir Menu">
             <FiMenu size={28} color="white" />
@@ -182,12 +196,12 @@ export default function PaginaFinal() {
 
           {/* Coluna 2 (Centro Absoluto): Barra de Pesquisa Travada no Centro */}
           <div className="busca-container-header" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', width: '420px', display: 'flex', alignItems: 'center' }}>
-            <input 
-              type="text" 
-              placeholder="Pesquisar produtos ativos..." 
+            <input
+              type="text"
+              placeholder="Pesquisar produtos ativos..."
               value={termoBusca}
               onChange={(e) => setTermoBusca(e.target.value)}
-              style={{ width: '100%', padding: '10px 40px 10px 20px', borderRadius: '25px', border: 'none', outline: 'none', fontSize: '14px' }} 
+              style={{ width: '100%', padding: '10px 40px 10px 20px', borderRadius: '25px', border: 'none', outline: 'none', fontSize: '14px' }}
             />
             <FiSearch style={{ position: 'absolute', right: '15px', color: '#888', fontSize: '18px' }} />
           </div>
@@ -196,9 +210,9 @@ export default function PaginaFinal() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '25px', minWidth: '180px', justifyContent: 'flex-end' }}>
             <div className="redes-desktop" style={{ display: 'flex', gap: '15px' }}>
               {dadosLoja.redesSociais && dadosLoja.redesSociais.map((rede: any, index: number) => (
-                  <a key={index} href={rede.url.startsWith('http') ? rede.url : `https://${rede.url}`} target="_blank" rel="noreferrer" style={{ color: 'white', textDecoration: 'none' }}>
-                      {renderIcone(rede.plataforma)}
-                  </a>
+                <a key={index} href={rede.url.startsWith('http') ? rede.url : `https://${rede.url}`} target="_blank" rel="noreferrer" style={{ color: 'white', textDecoration: 'none' }}>
+                  {renderIcone(rede.plataforma)}
+                </a>
               ))}
             </div>
 
@@ -213,21 +227,21 @@ export default function PaginaFinal() {
             </div>
           </div>
         </div>
-        
+
         {/* Faixa Bege Desktop (Menu de Categorias tradicional - oculto no mobile) */}
         <div className="categorias-linha-desktop" style={{ position: 'relative', paddingTop: '78px', paddingBottom: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '12px 25px', color: config.corTextoCard, fontSize: '13px', fontWeight: 'bold', textTransform: 'uppercase', zIndex: 10, maxWidth: '850px', width: '95%', textAlign: 'center' }}>
-          {categoriasFirebase.map((cat: any) => ( 
+          {categoriasFirebase.map((cat: any) => (
             <div key={cat.id} style={{ position: 'relative' }} onMouseEnter={() => setSubCatAberta(cat.id)} onMouseLeave={() => setSubCatAberta(null)}>
-                <span style={{ cursor: 'pointer', whiteSpace: 'nowrap' }} onClick={() => navegarParaCategoria(cat.nome)}>{cat.nome}</span>
-                {subCatAberta === cat.id && cat.subcategorias && cat.subcategorias.length > 0 && (
-                    <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'white', border: '1px solid #ddd', padding: '10px', minWidth: '150px', display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 100, boxShadow: '0 4px 10px rgba(0,0,0,0.1)', marginTop: '5px', textTransform: 'none' }}>
-                        {cat.subcategorias.map((sub: string, i: number) => (
-                            <span key={i} onClick={() => navegarParaSubcategoria(cat.nome, sub)} style={{ cursor: 'pointer', color: '#555', fontWeight: 'normal', fontSize: '12px' }}>
-                                {sub}
-                            </span>
-                        ))}
-                    </div>
-                )}
+              <span style={{ cursor: 'pointer', whiteSpace: 'nowrap' }} onClick={() => navegarParaCategoria(cat.nome)}>{cat.nome}</span>
+              {subCatAberta === cat.id && cat.subcategorias && cat.subcategorias.length > 0 && (
+                <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'white', border: '1px solid #ddd', padding: '10px', minWidth: '150px', display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 100, boxShadow: '0 4px 10px rgba(0,0,0,0.1)', marginTop: '5px', textTransform: 'none' }}>
+                  {cat.subcategorias.map((sub: string, i: number) => (
+                    <span key={i} onClick={() => navegarParaSubcategoria(cat.nome, sub)} style={{ cursor: 'pointer', color: '#555', fontWeight: 'normal', fontSize: '12px' }}>
+                      {sub}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -243,7 +257,7 @@ export default function PaginaFinal() {
                 <FiX size={24} />
               </button>
             </div>
-            
+
             <div className="sidebar-body-mobile">
               {categoriasFirebase.map((cat: any) => {
                 const temSubs = cat.subcategorias && cat.subcategorias.length > 0;
@@ -256,7 +270,7 @@ export default function PaginaFinal() {
                         {cat.nome}
                       </span>
                       {temSubs && (
-                        <button 
+                        <button
                           onClick={() => setCatMobileExpandida(estaExpandida ? null : cat.id)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', color: config.corTextoCard }}
                         >
@@ -269,8 +283,8 @@ export default function PaginaFinal() {
                     {temSubs && estaExpandida && (
                       <div style={{ backgroundColor: '#fafafa', paddingLeft: '20px' }}>
                         {cat.subcategorias.map((sub: string, i: number) => (
-                          <div 
-                            key={i} 
+                          <div
+                            key={i}
                             onClick={() => navegarParaSubcategoria(cat.nome, sub)}
                             style={{ padding: '12px 20px', color: '#555', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #f0f0f0' }}
                           >
@@ -289,31 +303,31 @@ export default function PaginaFinal() {
 
       {/* --- BANNER CALIBRADO --- */}
       <div className="banner-container" style={{ width: '100%', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        
+
         {/* Seta Esquerda */}
         <button className="seta-banner esq" onClick={bannerAnterior} aria-label="Banner Anterior">
           <FiChevronLeft size={36} />
         </button>
 
         {banners.map((b, idx) => (
-          <div 
-            key={idx} 
-            onClick={() => b.link && navegarParaCategoria(b.link)} 
-            style={{ 
-              position: bannerAtivo === idx ? 'relative' : 'absolute', 
-              top: 0, 
-              left: 0, 
-              width: '100%', 
-              height: '100%', 
-              backgroundImage: `url('${b.url}')`, 
-              backgroundSize: '100% 100%', 
-              backgroundPosition: 'center', 
+          <div
+            key={idx}
+            onClick={() => b.link && navegarParaCategoria(b.link)}
+            style={{
+              position: bannerAtivo === idx ? 'relative' : 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              backgroundImage: `url('${b.url}')`,
+              backgroundSize: '100% 100%',
+              backgroundPosition: 'center',
               backgroundRepeat: 'no-repeat',
-              transition: 'opacity 0.8s ease-in-out', 
-              opacity: bannerAtivo === idx ? 1 : 0, 
-              zIndex: bannerAtivo === idx ? 5 : 1, 
-              cursor: b.link ? 'pointer' : 'default' 
-            }} 
+              transition: 'opacity 0.8s ease-in-out',
+              opacity: bannerAtivo === idx ? 1 : 0,
+              zIndex: bannerAtivo === idx ? 5 : 1,
+              cursor: b.link ? 'pointer' : 'default'
+            }}
           />
         ))}
 
@@ -326,15 +340,15 @@ export default function PaginaFinal() {
       {/* --- FAIXA DE BENEFÍCIOS --- */}
       <div style={{ backgroundColor: 'white', padding: '15px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'center', gap: '30px', flexWrap: 'wrap' }}>
         {[
-            { icon: "📦", text: "CONFIRA OPÇÕES DE FRETE" },
-            { icon: "📍", text: "ENVIAMOS PARA TODO BRASIL" },
-            { icon: "💳", text: "PAGUE COM PIX" },
-            { icon: "🏠", text: "FIQUE TRANQUILO E RECEBA EM CASA" }
+          { icon: "📦", text: "CONFIRA OPÇÕES DE FRETE" },
+          { icon: "📍", text: "ENVIAMOS PARA TODO BRASIL" },
+          { icon: "💳", text: "PAGUE COM PIX" },
+          { icon: "🏠", text: "FIQUE TRANQUILO E RECEBA EM CASA" }
         ].map((item, index) => (
-            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', fontWeight: 'bold', color: '#555' }}>
-                <span>{item.icon}</span>
-                <span>{item.text}</span>
-            </div>
+          <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', fontWeight: 'bold', color: '#555' }}>
+            <span>{item.icon}</span>
+            <span>{item.text}</span>
+          </div>
         ))}
       </div>
 
@@ -344,7 +358,7 @@ export default function PaginaFinal() {
           {termoBusca ? `Resultados para: ${termoBusca}` : "Lançamentos que você vai amar"}
         </h2>
         <div className="grid-produtos">
-          {produtosParaExibir.length > 0 ? produtosParaExibir.slice(0, 16).map((prod: any) => (
+          {produtosParaExibir.length > 0 ? produtosParaExibir.slice(0, 16).map((prod: Produto) => (
             <div key={prod.id} onClick={() => navegarParaProduto(prod)} className="card-produto" style={{ backgroundColor: 'white', padding: '10px', borderRadius: '12px', textAlign: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', cursor: 'pointer', transition: 'transform 0.2s', height: '100%', position: 'relative' }}>
               <div>
                 <img src={prod.capa || "https://via.placeholder.com/500"} style={{ width: '100%', aspectRatio: '3/4', objectFit: 'cover', borderRadius: '8px' }} alt={prod.nome} />

@@ -16,6 +16,7 @@ interface VariacoesModalProps {
   setOpcoesVar2: (val: string[]) => void;
   tabelaPrecos: any;
   onSave: (novaTabela: any) => void;
+  onCancel: () => void; // <--- Adicione esta linha
   gerarCombinacoes: () => any[];
   sugerirSkus: (tabela: any, setTabela: any) => void;
 }
@@ -24,7 +25,7 @@ export default function VariacoesModal({
   showVarModal, setShowVarModal, nomeVar1, setNomeVar1, opcoesVar1, setOpcoesVar1,
   nomeVar2, setNomeVar2, opcoesVar2, setOpcoesVar2, tabelaPrecos, onSave, gerarCombinacoes, sugerirSkus,
 }: VariacoesModalProps) {
-  
+
   const [draftTabela, setDraftTabela] = useState(tabelaPrecos);
   const [showVar2, setShowVar2] = useState(nomeVar2 !== "" || opcoesVar2.length > 0);
 
@@ -32,7 +33,7 @@ export default function VariacoesModal({
     if (showVarModal) {
       setDraftTabela(tabelaPrecos);
     }
-  }, [showVarModal]); 
+  }, [showVarModal]);
 
   if (!showVarModal) return null;
 
@@ -42,7 +43,7 @@ export default function VariacoesModal({
   const handleDraftInput = (key: string, campo: string, valor: string) => {
     const cleanValue = campo === "foto" ? valor : valor.replace(/\D/g, "");
     const formatted = campo === "foto" ? valor : (cleanValue ? (parseInt(cleanValue) / 100).toFixed(2) : "");
-    
+
     setDraftTabela((prev: any) => ({
       ...prev,
       [key]: { ...prev[key], [campo]: formatted }
@@ -57,8 +58,8 @@ export default function VariacoesModal({
           <h3 style={shopeeStyles.title}>Grade de Variações</h3>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {temVariaçõesVisiveis && (
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => sugerirSkus(draftTabela, setDraftTabela)}
                 style={{ backgroundColor: '#3b82f6', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
               >
@@ -74,8 +75,8 @@ export default function VariacoesModal({
           <div style={shopeeStyles.section}>
             <label style={shopeeStyles.label}>Variação 1 (ex: Cor)</label>
             <div style={shopeeStyles.varBox}>
-               <input style={styles.input} value={nomeVar1} onChange={e => setNomeVar1(e.target.value)} placeholder="Ex: Cor" />
-               <div style={shopeeStyles.tagsContainer}>
+              <input style={styles.input} value={nomeVar1} onChange={e => setNomeVar1(e.target.value)} placeholder="Ex: Cor" />
+              <div style={shopeeStyles.tagsContainer}>
                 {opcoesVar1.map((op, idx) => (
                   <div key={idx} style={shopeeStyles.tagInputWrapper}>
                     <input style={shopeeStyles.tagInput} value={op} onChange={e => { const n = [...opcoesVar1]; n[idx] = e.target.value; setOpcoesVar1(n); }} />
@@ -83,7 +84,7 @@ export default function VariacoesModal({
                   </div>
                 ))}
                 <button style={shopeeStyles.addBtn} onClick={() => setOpcoesVar1([...opcoesVar1, ""])}>+ Opção</button>
-               </div>
+              </div>
             </div>
           </div>
 
@@ -118,7 +119,7 @@ export default function VariacoesModal({
             <table style={{ ...shopeeStyles.table, width: '100%', marginTop: '20px' }}>
               <thead>
                 <tr style={shopeeStyles.trHead}>
-                  <th style={{...shopeeStyles.th, width: '100px'}}>Var 1</th>
+                  <th style={{ ...shopeeStyles.th, width: '100px' }}>Var 1</th>
                   {showVar2 && <th style={shopeeStyles.th}>Var 2</th>}
                   <th style={shopeeStyles.th}>SKU</th>
                   <th style={shopeeStyles.th}>Preço</th>
@@ -133,7 +134,7 @@ export default function VariacoesModal({
                     return (
                       <tr key={c.key}>
                         {idx === 0 && (
-                          <td rowSpan={combsDesteGrupo.length} style={{...shopeeStyles.td, textAlign: 'center', backgroundColor: '#f8fafc'}}>
+                          <td rowSpan={combsDesteGrupo.length} style={{ ...shopeeStyles.td, textAlign: 'center', backgroundColor: '#f8fafc' }}>
                             <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>{v1}</div>
                             <div style={{ width: '50px', height: '50px', margin: '0 auto', border: temFoto ? '1px solid #3b82f6' : '1px dashed #cbd5e1', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
                               {temFoto ? (
@@ -145,21 +146,21 @@ export default function VariacoesModal({
                                 <>
                                   <span style={{ fontSize: '18px', color: '#cbd5e1' }}>+</span>
                                   <input type="file" accept="image/*" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if(!file) return;
-                                      const reader = new FileReader();
-                                      reader.onload = (ev) => {
-                                        const img = new Image();
-                                        img.src = ev.target?.result as string;
-                                        img.onload = () => {
-                                           const canvas = document.createElement('canvas');
-                                           canvas.width = 300; canvas.height = 300;
-                                           canvas.getContext('2d')?.drawImage(img, 0, 0, 300, 300);
-                                           const compressed = canvas.toDataURL('image/jpeg', 0.7);
-                                           combsDesteGrupo.forEach(comb => handleDraftInput(comb.key, "foto", compressed));
-                                        };
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    const reader = new FileReader();
+                                    reader.onload = (ev) => {
+                                      const img = new Image();
+                                      img.src = ev.target?.result as string;
+                                      img.onload = () => {
+                                        const canvas = document.createElement('canvas');
+                                        canvas.width = 300; canvas.height = 300;
+                                        canvas.getContext('2d')?.drawImage(img, 0, 0, 300, 300);
+                                        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+                                        combsDesteGrupo.forEach(comb => handleDraftInput(comb.key, "foto", compressed));
                                       };
-                                      reader.readAsDataURL(file);
+                                    };
+                                    reader.readAsDataURL(file);
                                   }} />
                                 </>
                               )}
@@ -181,17 +182,17 @@ export default function VariacoesModal({
 
         {/* FOOTER */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '15px', borderTop: '1px solid #e2e8f0', marginTop: '10px' }}>
-          <button 
+          <button
             onClick={() => {
-                setDraftTabela(tabelaPrecos); // Força o backup a voltar ao original antes de fechar
-                setShowVarModal(false);
-            }} 
+              setDraftTabela(tabelaPrecos); // Força o backup a voltar ao original antes de fechar
+              setShowVarModal(false);
+            }}
             style={{ padding: '10px 20px', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: '#f1f5f9', cursor: 'pointer' }}
           >
             Cancelar
           </button>
-          <button 
-            onClick={() => { onSave(draftTabela); setShowVarModal(false); }} 
+          <button
+            onClick={() => { onSave(draftTabela); setShowVarModal(false); }}
             style={{ padding: '10px 40px', borderRadius: '4px', backgroundColor: '#ee4d2d', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
           >
             Salvar Grade
